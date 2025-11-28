@@ -1,0 +1,9 @@
+#!/usr/bin/expect
+
+set timeout 20
+spawn expressvpn activate
+expect "Enter activation code:"
+send "$env(EXPRESSVPN_ACTIVATION_CODE)\r"
+expect "Help improve ExpressVPN"
+send "n\r"
+expect eof

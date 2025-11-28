@@ -1,0 +1,16 @@
+Flask>=2.0
+SQLAlchemy>=1.4
+APScheduler>=3.9
+requests[socks]
+beautifulsoup4
+influxdb-client
+expressvpn-python
+stem
+alembic
+supervisor
+flask-login
+flask-socketio
+python-socketio
+python-dotenv
+gevent
+gevent-websocket

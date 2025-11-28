@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto Voter</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+  <!-- Top Navbar -->
+  <nav class="navbar navbar-light bg-white border-bottom fixed-top shadow-sm">
+    <div class="container-fluid">
+      <span class="navbar-brand mb-0 h1">Auto Voter</span>
+      <div class="d-flex align-items-center">
+        <button id="refreshAll" class="btn btn-link text-secondary me-2 p-0" style="font-size: 1.5rem;">
+          <i class="bi bi-arrow-clockwise"></i>
+        </button>
+        <button id="btnLogin" class="btn btn-outline-primary btn-sm">Login</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="container-fluid" style="padding-top: 70px; padding-bottom: 80px;">
+
+    <!-- Polls Section -->
+    <div id="section-polls" class="content-section">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">Polls</h5>
+        <button id="btnNewPoll" class="btn btn-primary btn-sm">
+          <i class="bi bi-plus-circle"></i> New
+        </button>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-body p-2">
+          <div class="d-flex gap-2 align-items-center mb-2">
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" id="pollsLast7Days">
+              <label class="form-check-label small" for="pollsLast7Days">Last 7 days</label>
+            </div>
+            <select class="form-select form-select-sm" id="pollsSortOrder" style="width: auto;">
+              <option value="desc">Newest</option>
+              <option value="asc">Oldest</option>
+            </select>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" id="pollsTable">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Poll ID</th>
+                  <th>Answer ID</th>
+                  <th>Status</th>
+                  <th>Tor</th>
+                  <th>Stats (Votes / Place / Gap)</th>
+                  <th>Last Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Queue Section -->
+    <div id="section-queue" class="content-section d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">Queue</h5>
+        <button id="btnAddQueue" class="btn btn-success btn-sm">
+          <i class="bi bi-plus-lg"></i> Add
+        </button>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-body p-2">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" id="queueLast7Days">
+              <label class="form-check-label small" for="queueLast7Days">Last 7 days</label>
+            </div>
+          </div>
+
+          <div class="btn-group btn-group-sm w-100 mb-3" role="group" id="queueFilters">
+            <input type="radio" class="btn-check" name="queueFilter" id="filterAll" value="all" checked
+              autocomplete="off">
+            <label class="btn btn-outline-primary" for="filterAll">All</label>
+
+            <input type="radio" class="btn-check" name="queueFilter" id="filterQueued" value="queued"
+              autocomplete="off">
+            <label class="btn btn-outline-secondary" for="filterQueued">Queued</label>
+
+            <input type="radio" class="btn-check" name="queueFilter" id="filterRunning" value="running"
+              autocomplete="off">
+            <label class="btn btn-outline-info" for="filterRunning">Running</label>
+
+            <input type="radio" class="btn-check" name="queueFilter" id="filterCompleted" value="completed"
+              autocomplete="off">
+            <label class="btn btn-outline-success" for="filterCompleted">Done</label>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" id="queueTable">
+              <thead class="table-light d-none d-md-table-header-group">
+                <tr>
+                  <th>#</th>
+                  <th>Name</th>
+                  <th>Poll</th>
+                  <th>Progress</th>
+                  <th>Success Rate</th>
+                  <th>Started</th>
+                  <th>Finished</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Container -->
+          <div id="queuePagination" class="mt-3"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workers Section -->
+    <div id="section-workers" class="content-section d-none">
+      <h5 class="mb-3">Active Workers</h5>
+      <div id="workerList" class="row g-3"></div>
+    </div>
+
+    <!-- Settings Section -->
+    <div id="section-settings" class="content-section d-none">
+      <h5 class="mb-3">Settings & Status</h5>
+
+      <!-- Worker Scheduler Control -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h6 class="card-title d-flex justify-content-between align-items-center">
+            Worker Scheduler
+            <span id="schedulerStatusBadge" class="badge bg-secondary">Loading...</span>
+          </h6>
+          <p class="card-text small text-muted">Controls the main background worker process.</p>
+          <button id="btnToggleScheduler" class="btn btn-primary w-100" disabled>
+            Pause Workers
+          </button>
+        </div>
+      </div>
+
+      <!-- Poll Results Scheduler Control -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h6 class="card-title d-flex justify-content-between align-items-center">
+            Poll Results Scheduler
+            <span id="pollSchedulerStatusBadge" class="badge bg-secondary">Loading...</span>
+          </h6>
+          <p class="card-text small text-muted">Automatically captures poll results to database.</p>
+          <div class="d-grid gap-2">
+            <button id="btnTogglePollScheduler" class="btn btn-outline-primary" disabled>Enable Poll Results</button>
+            <button id="btnConfigPollScheduler" class="btn btn-outline-secondary">
+              <i class="bi bi-gear"></i> Configure Interval
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Concurrency Settings -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h6 class="card-title">Concurrency Settings</h6>
+          <p class="card-text small text-muted">Limit the number of simultaneous worker processes.</p>
+          <div class="input-group mb-3">
+            <span class="input-group-text">Max Workers</span>
+            <input type="number" class="form-control" id="settingMaxWorkers" min="1" value="1">
+          </div>
+
+          <div class="input-group mb-3">
+            <span class="input-group-text">Scheduler Interval (s)</span>
+            <input type="number" class="form-control" id="settingSchedulerInterval" min="1" value="60">
+          </div>
+
+          <div class="d-grid">
+            <button class="btn btn-primary" type="button" id="btnSaveConcurrencySettings">Save Settings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Navigation -->
+  <nav class="navbar fixed-bottom navbar-light bg-white border-top shadow-lg"
+    style="padding-bottom: env(safe-area-inset-bottom);">
+    <div class="container-fluid">
+      <div class="row w-100 mx-0 text-center">
+        <div class="col-3 px-0">
+          <button class="btn btn-link nav-link w-100 active p-1" data-target="section-polls"
+            style="color: inherit; text-decoration: none;">
+            <i class="bi bi-list-check d-block fs-4"></i>
+            <span style="font-size: 0.75rem;">Polls</span>
+          </button>
+        </div>
+        <div class="col-3 px-0">
+          <button class="btn btn-link nav-link w-100 p-1" data-target="section-queue"
+            style="color: inherit; text-decoration: none;">
+            <i class="bi bi-collection-play d-block fs-4"></i>
+            <span style="font-size: 0.75rem;">Queue</span>
+          </button>
+        </div>
+        <div class="col-3 px-0">
+          <button class="btn btn-link nav-link w-100 p-1" data-target="section-workers"
+            style="color: inherit; text-decoration: none;">
+            <i class="bi bi-cpu d-block fs-4"></i>
+            <span style="font-size: 0.75rem;">Workers</span>
+          </button>
+        </div>
+        <div class="col-3 px-0">
+          <button class="btn btn-link nav-link w-100 p-1" data-target="section-settings"
+            style="color: inherit; text-decoration: none;">
+            <i class="bi bi-gear d-block fs-4"></i>
+            <span style="font-size: 0.75rem;">Settings</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Create Poll Modal -->
+  <div class="modal fade" id="createPollModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Create New Poll</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="pollForm">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="entryname" class="form-label">Entry name</label>
+              <input class="form-control" id="entryname" placeholder="e.g. My Poll" required>
+            </div>
+            <div class="mb-3">
+              <label for="pollid" class="form-label">Poll ID</label>
+              <input class="form-control" id="pollid" placeholder="e.g. 123456" required>
+            </div>
+            <div class="mb-3">
+              <label for="answerid" class="form-label">Answer ID</label>
+              <input class="form-control" id="answerid" placeholder="e.g. 1" required>
+            </div>
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" id="use_tor">
+              <label class="form-check-label" for="use_tor">Use Tor</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create Poll</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Queue Item Modal -->
+  <div class="modal fade" id="addQueueModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Add to Queue</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="queueForm">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="pollSelect" class="form-label">Choose existing poll</label>
+              <select id="pollSelect" class="form-select">
+                <option value="">-- choose existing poll or enter manually --</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="q_name" class="form-label">Queue Name</label>
+              <input class="form-control" id="q_name" placeholder="Queue name (auto-filled from poll)">
+            </div>
+            <div class="mb-3">
+              <label for="q_pollid" class="form-label">Poll ID (override)</label>
+              <input class="form-control" id="q_pollid" placeholder="Poll ID (override)">
+            </div>
+            <div class="mb-3">
+              <label for="q_answerid" class="form-label">Answer ID (override)</label>
+              <input class="form-control" id="q_answerid" placeholder="Answer ID (override)">
+            </div>
+            <div class="row mb-3">
+              <div class="col-6">
+                <label for="q_votes" class="form-label">Votes</label>
+                <input type="number" min="1" class="form-control" id="q_votes" value="10">
+              </div>
+              <div class="col-6">
+                <label for="q_threads" class="form-label">Threads</label>
+                <input type="number" min="1" class="form-control" id="q_threads" value="1">
+              </div>
+            </div>
+            <div class="row mb-3">
+              <div class="col-6">
+                <label for="q_per_run" class="form-label">Per run</label>
+                <input type="number" min="1" class="form-control" id="q_per_run" value="1">
+              </div>
+              <div class="col-6">
+                <label for="q_pause" class="form-label">Pause (seconds)</label>
+                <input type="number" min="0" class="form-control" id="q_pause" value="70">
+              </div>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" id="q_use_vpn" checked>
+              <label class="form-check-label" for="q_use_vpn">Use VPN</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" id="q_use_tor">
+              <label class="form-check-label" for="q_use_tor">Use Tor</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-success">Add to Queue</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- Login Modal -->
+  <div class="modal fade" id="loginModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static"
+    data-bs-keyboard="false">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Admin Login</h5>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="loginUsername" class="form-label">Username</label>
+            <input id="loginUsername" class="form-control" placeholder="Enter username">
+          </div>
+          <div class="mb-3">
+            <label for="loginPassword" class="form-label">Password</label>
+            <input id="loginPassword" type="password" class="form-control" placeholder="Enter password">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="saveCredentials" class="btn btn-primary">Login</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Worker Log Modal -->
+  <div class="modal fade" id="logModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Worker Log</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+          <pre class="mb-0"></pre>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Poll Scheduler Config Modal -->
+  <div class="modal fade" id="pollSchedulerConfigModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Poll Results Scheduler Configuration</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="pollSchedulerInterval" class="form-label">Interval (minutes)</label>
+            <input type="number" class="form-control" id="pollSchedulerInterval" min="1" value="15">
+            <div class="form-text">How often to capture poll results (minimum 1 minute)</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Last Run</label>
+            <div id="pollSchedulerLastRun" class="text-muted">Never</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="savePollSchedulerConfig">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index:1080"></div>
+  </div>
+
+  <!-- Edit Poll Modal -->
+  <div class="modal fade" id="editPollModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Poll</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="editPollForm">
+            <input type="hidden" id="editPollId">
+
+            <div class="mb-3">
+              <label for="editPollName" class="form-label">Poll Name</label>
+              <input type="text" class="form-control" id="editPollName" required>
+            </div>
+
+            <div class="mb-3">
+              <label for="editPollPollId" class="form-label">Poll ID</label>
+              <input type="text" class="form-control" id="editPollPollId" required>
+            </div>
+
+            <div class="mb-3">
+              <label for="editPollAnswerId" class="form-label">Answer ID</label>
+              <input type="text" class="form-control" id="editPollAnswerId" required>
+            </div>
+
+            <div class="mb-3">
+              <label for="editPollStatus" class="form-label">Status</label>
+              <select class="form-select" id="editPollStatus">
+                <option value="active">Active</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
+
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" id="editPollUseTor">
+              <label class="form-check-label" for="editPollUseTor">
+                Use TOR
+              </label>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btnSaveEditPoll">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Poll Snapshot Modal -->
+  <div class="modal fade" id="pollSnapshotModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Poll Results Snapshot</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <!-- Poll Summary -->
+          <div class="card mb-3">
+            <div class="card-body">
+              <h6 class="card-title" id="snapshotPollTitle">Loading...</h6>
+              <div class="row small text-muted">
+                <div class="col-md-6">
+                  <div><strong>Poll ID:</strong> <span id="snapshotPollId">-</span></div>
+                  <div><strong>Status:</strong> <span id="snapshotStatus">-</span></div>
+                </div>
+                <div class="col-md-6">
+                  <div><strong>Last Updated:</strong> <span id="snapshotTime">-</span></div>
+                  <div><strong>Time Since:</strong> <span id="snapshotTimeSince">-</span></div>
+                </div>
+              </div>
+              <div class="mt-2">
+                <strong>Total Votes:</strong> <span id="snapshotTotalVotes" class="fs-5">-</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Results Table -->
+          <div class="table-responsive">
+            <table class="table table-sm table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Place</th>
+                  <th>Name</th>
+                  <th class="d-none d-md-table-cell">Answer ID</th>
+                  <th>Votes</th>
+                  <th>%</th>
+                  <th>Gap</th>
+                </tr>
+              </thead>
+              <tbody id="snapshotTableBody">
+                <tr>
+                  <td colspan="6" class="text-center">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,32 @@
+version: '3.8'
+services:
+  web:
+    build: .
+    image: auto_voter_webapp
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    environment:
+      - FLASK_ENV=production
+      - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - scheduler
+
+  scheduler:
+    build: .
+    image: auto_voter_scheduler
+    command: python app/scheduler_service.py
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    environment:
+      - AUTO_VOTER_SCHEDULE_INTERVAL=30
+      - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
+    volumes:
+      - ./data:/app/data

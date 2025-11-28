@@ -1,0 +1,17 @@
+:root{
+	--brand: #0d6efd;
+	--muted: #6c757d;
+}
+body { background: linear-gradient(180deg, #f6f8fb 0%, #ffffff 60%); font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+.card { border: none; border-radius: 12px; }
+.card.shadow-sm { box-shadow: 0 6px 18px rgba(22,28,45,0.06); }
+.badge { font-weight:600 }
+.table-sm td, .table-sm th { vertical-align: middle; }
+.list-group-item { display: flex; justify-content: space-between; align-items: start; }
+.navbar-brand { font-weight:700 }
+.btn-primary { background: var(--brand); border-color: var(--brand); }
+.btn-outline-primary { color: var(--brand); border-color: rgba(13,110,253,0.15); }
+
+/* small helpers */
+.small-muted { color: var(--muted); font-size: .85rem }
+
