@@ -1,7 +1,9 @@
 version: '3.8'
 services:
   web:
-    build: .
+    build:
+      context: https://github.com/walshy828/auto_voter.git#main
+      dockerfile: Dockerfile
     image: auto_voter_webapp
     cap_add:
       - NET_ADMIN
@@ -18,7 +20,9 @@ services:
       - scheduler
 
   scheduler:
-    build: .
+    build:
+      context: https://github.com/walshy828/auto_voter.git#main
+      dockerfile: Dockerfile
     image: auto_voter_scheduler
     command: python app/scheduler_service.py
     cap_add:

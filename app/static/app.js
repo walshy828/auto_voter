@@ -637,9 +637,11 @@ async function refreshSchedulerStatus() {
       btn.textContent = 'Resume Workers';
       btn.className = 'btn btn-sm btn-outline-success';
       btn.onclick = async () => {
-        await authedFetch('/scheduler/resume', { method: 'POST' });
-        refreshSchedulerStatus();
-        showToast('Workers resumed', 'success');
+        try {
+          await authedFetch('/scheduler/resume', { method: 'POST' });
+          refreshSchedulerStatus();
+          showToast('Workers resumed', 'success');
+        } catch (e) { showToast(e.message, 'danger'); }
       };
     }
     btn.disabled = false;
@@ -704,6 +706,17 @@ async function refreshPollSchedulerStatus() {
       };
     }
     btn.disabled = false;
+
+    // Update inline config fields
+    const intervalInput = document.getElementById('pollSchedulerIntervalInput');
+    if (intervalInput && document.activeElement !== intervalInput) {
+      intervalInput.value = data.interval_minutes;
+    }
+
+    const lastRunInline = document.getElementById('pollSchedulerLastRunInline');
+    if (lastRunInline) {
+      lastRunInline.textContent = data.last_run ? formatESTTime(data.last_run) : 'Never';
+    }
   } catch (e) {
     console.log('Poll scheduler status fetch failed', e);
   }
@@ -779,41 +792,56 @@ document.getElementById('saveCredentials').addEventListener('click', async () =>
   } catch (e) { showToast('Login error: ' + e.message, 'danger'); }
 });
 
-// Poll Scheduler Config Modal
-document.getElementById('btnConfigPollScheduler').addEventListener('click', async () => {
-  try {
-    const data = await fetchPollSchedulerConfig();
-    document.getElementById('pollSchedulerInterval').value = data.interval_minutes;
-    document.getElementById('pollSchedulerLastRun').textContent = data.last_run
-      ? formatESTTime(data.last_run)
-      : 'Never';
-    const modal = new bootstrap.Modal(document.getElementById('pollSchedulerConfigModal'));
-    modal.show();
-  } catch (e) {
-    showToast('Failed to load config: ' + e.message, 'danger');
-  }
-});
 
-document.getElementById('savePollSchedulerConfig').addEventListener('click', async () => {
-  const interval = parseInt(document.getElementById('pollSchedulerInterval').value);
-  if (interval < 1) {
-    return showToast('Interval must be at least 1 minute', 'warning');
-  }
 
-  try {
-    await authedFetch('/poll-scheduler/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ interval_minutes: interval })
-    });
-    showToast('Configuration saved', 'success');
-    const modal = bootstrap.Modal.getInstance(document.getElementById('pollSchedulerConfigModal'));
-    modal.hide();
-    refreshPollSchedulerStatus();
-  } catch (e) {
-    showToast('Failed to save config: ' + e.message, 'danger');
-  }
-});
+// Save Poll Scheduler Interval
+const btnSavePollSchedulerInterval = document.getElementById('btnSavePollSchedulerInterval');
+if (btnSavePollSchedulerInterval) {
+  btnSavePollSchedulerInterval.addEventListener('click', async () => {
+    const interval = parseInt(document.getElementById('pollSchedulerIntervalInput').value);
+    if (interval < 1) {
+      return showToast('Interval must be at least 1 minute', 'warning');
+    }
+
+    try {
+      await authedFetch('/poll-scheduler/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interval_minutes: interval })
+      });
+      showToast('Interval saved', 'success');
+      refreshPollSchedulerStatus();
+    } catch (e) {
+      showToast('Failed to save interval: ' + e.message, 'danger');
+    }
+  });
+}
+
+// Refresh Poll Results Now
+const btnRefreshPollResults = document.getElementById('btnRefreshPollResults');
+if (btnRefreshPollResults) {
+  btnRefreshPollResults.addEventListener('click', async () => {
+    try {
+      btnRefreshPollResults.disabled = true;
+      btnRefreshPollResults.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refreshing...';
+
+      await authedFetch('/poll-scheduler/run-now', { method: 'POST' });
+      showToast('Poll results refresh started', 'success');
+
+      // Re-enable button after a delay
+      setTimeout(() => {
+        btnRefreshPollResults.disabled = false;
+        btnRefreshPollResults.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh Now';
+        refreshPollSchedulerStatus();
+      }, 2000);
+    } catch (e) {
+      showToast('Failed to start refresh: ' + e.message, 'danger');
+      btnRefreshPollResults.disabled = false;
+      btnRefreshPollResults.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh Now';
+    }
+  });
+}
+
 
 // Socket.IO client for live log streaming (socket and socketConnected declared at top)
 function initializeSocketIO() {
@@ -1016,6 +1044,105 @@ if (btnSaveConcurrencySettings) {
     }
   });
 }
+
+// InfluxDB Settings
+const btnSaveInfluxSettings = document.getElementById('btnSaveInfluxSettings');
+if (btnSaveInfluxSettings) {
+  btnSaveInfluxSettings.addEventListener('click', async () => {
+    const influxUrl = document.getElementById('settingInfluxUrl').value;
+    const influxOrg = document.getElementById('settingInfluxOrg').value;
+    const influxBucket = document.getElementById('settingInfluxBucket').value;
+    const influxToken = document.getElementById('settingInfluxToken').value;
+
+    try {
+      await authedFetch('/settings/influxdb', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          influx_url: influxUrl,
+          influx_org: influxOrg,
+          influx_bucket: influxBucket,
+          influx_token: influxToken
+        })
+      });
+      showToast('InfluxDB settings saved', 'success');
+      // Clear token field for security
+      document.getElementById('settingInfluxToken').value = '';
+    } catch (e) {
+      showToast('Failed to save InfluxDB settings: ' + e.message, 'danger');
+    }
+  });
+}
+
+// Voting Behavior Settings
+const btnSaveVotingSettings = document.getElementById('btnSaveVotingSettings');
+if (btnSaveVotingSettings) {
+  btnSaveVotingSettings.addEventListener('click', async () => {
+    const vpnMode = document.getElementById('settingVpnMode').value;
+    const cooldownCount = document.getElementById('settingCooldownCount').value;
+    const cooldown = document.getElementById('settingCooldown').value;
+    const cntToPause = document.getElementById('settingCntToPause').value;
+    const longPause = document.getElementById('settingLongPause').value;
+
+    try {
+      await authedFetch('/settings/voting', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vpnmode: vpnMode,
+          cooldown_count: cooldownCount,
+          cooldown: cooldown,
+          cnt_to_pause: cntToPause,
+          long_pause_seconds: longPause
+        })
+      });
+      showToast('Voting settings saved', 'success');
+    } catch (e) {
+      showToast('Failed to save voting settings: ' + e.message, 'danger');
+    }
+  });
+}
+
+// Load settings when settings section is shown
+async function loadAllSettings() {
+  try {
+    // Load InfluxDB settings
+    const influxRes = await authedFetch('/settings/influxdb');
+    const influxData = await influxRes.json();
+    document.getElementById('settingInfluxUrl').value = influxData.influx_url || '';
+    document.getElementById('settingInfluxOrg').value = influxData.influx_org || '';
+    document.getElementById('settingInfluxBucket').value = influxData.influx_bucket || '';
+
+    // Load voting settings
+    const votingRes = await authedFetch('/settings/voting');
+    const votingData = await votingRes.json();
+    document.getElementById('settingVpnMode').value = votingData.vpnmode || 2;
+    document.getElementById('settingCooldownCount').value = votingData.cooldown_count || 3;
+    document.getElementById('settingCooldown').value = votingData.cooldown || 92;
+    document.getElementById('settingCntToPause').value = votingData.cnt_to_pause || 1;
+    document.getElementById('settingLongPause').value = votingData.long_pause_seconds || 90;
+  } catch (e) {
+    console.error('Failed to load settings:', e);
+  }
+}
+
+// Call loadAllSettings when navigating to settings
+document.querySelectorAll('[data-section="settings"]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    loadAllSettings();
+    // Initialize tooltips after a short delay to ensure DOM is ready
+    setTimeout(() => {
+      const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+    }, 100);
+  });
+});
+
+// Initialize tooltips on page load
+document.addEventListener('DOMContentLoaded', () => {
+  const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+  const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+});
 
 async function showPollSnapshot(pollId) {
   try {

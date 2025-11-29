@@ -255,8 +255,8 @@ def _get_poll_scheduler_config():
         db.close()
 
 
-def _scheduled_poll_results_capture():
-    """Run poll results capture if enabled."""
+def _scheduled_poll_results_capture(force=False):
+    """Run poll results capture if enabled or forced."""
     from app.models import PollSchedulerConfig
     from app.vote_results_influx_scheduler import run_all_polls
     import datetime
@@ -264,7 +264,7 @@ def _scheduled_poll_results_capture():
     db = SessionLocal()
     try:
         config = db.query(PollSchedulerConfig).first()
-        if not config or not config.enabled:
+        if not force and (not config or not config.enabled):
             return
         
         print("[Poll Results Scheduler] Running poll results capture...")
@@ -401,7 +401,7 @@ def update_poll_scheduler_config():
 def run_poll_scheduler_now():
     """Manually trigger poll results capture."""
     try:
-        _scheduled_poll_results_capture()
+        _scheduled_poll_results_capture(force=True)
         return jsonify({'success': True, 'message': 'Poll results capture triggered'})
     except Exception as e:
         return abort(500, str(e))
@@ -481,6 +481,99 @@ def update_concurrency_setting():
             'max_concurrent_workers': int(data.get('max_concurrent_workers', 1)),
             'scheduler_interval': int(data.get('scheduler_interval', 60))
         })
+    finally:
+        db.close()
+
+
+@app.route('/settings/influxdb', methods=['GET'])
+@require_auth
+def get_influxdb_settings():
+    from app.models import SystemSetting
+    db = SessionLocal()
+    try:
+        settings = {}
+        keys = ['influx_url', 'influx_org', 'influx_bucket']
+        for key in keys:
+            setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+            settings[key] = setting.value if setting else ''
+        return jsonify(settings)
+    finally:
+        db.close()
+
+
+@app.route('/settings/influxdb', methods=['POST'])
+@require_auth
+def update_influxdb_settings():
+    from app.models import SystemSetting
+    data = request.json or {}
+    
+    db = SessionLocal()
+    try:
+        # Update InfluxDB settings
+        for key in ['influx_url', 'influx_org', 'influx_bucket', 'influx_token']:
+            if key in data:
+                setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+                if not setting:
+                    setting = SystemSetting(key=key)
+                    db.add(setting)
+                setting.value = data[key]
+        
+        db.commit()
+        return jsonify({'success': True})
+    finally:
+        db.close()
+
+
+@app.route('/settings/voting', methods=['GET'])
+@require_auth
+def get_voting_settings():
+    from app.models import SystemSetting
+    from app.config import vpnmode, CoolDownCount, Cooldown, cntToPause, longPauseSeconds
+    
+    db = SessionLocal()
+    try:
+        settings = {}
+        
+        # Get from DB or use defaults from config
+        vpnmode_setting = db.query(SystemSetting).filter(SystemSetting.key == 'vpnmode').first()
+        settings['vpnmode'] = int(vpnmode_setting.value) if vpnmode_setting else vpnmode
+        
+        cooldown_count = db.query(SystemSetting).filter(SystemSetting.key == 'cooldown_count').first()
+        settings['cooldown_count'] = int(cooldown_count.value) if cooldown_count else CoolDownCount
+        
+        cooldown = db.query(SystemSetting).filter(SystemSetting.key == 'cooldown').first()
+        settings['cooldown'] = int(cooldown.value) if cooldown else Cooldown
+        
+        cnt_to_pause = db.query(SystemSetting).filter(SystemSetting.key == 'cnt_to_pause').first()
+        settings['cnt_to_pause'] = int(cnt_to_pause.value) if cnt_to_pause else cntToPause
+        
+        long_pause = db.query(SystemSetting).filter(SystemSetting.key == 'long_pause_seconds').first()
+        settings['long_pause_seconds'] = int(long_pause.value) if long_pause else longPauseSeconds
+        
+        return jsonify(settings)
+    finally:
+        db.close()
+
+
+@app.route('/settings/voting', methods=['POST'])
+@require_auth
+def update_voting_settings():
+    from app.models import SystemSetting
+    data = request.json or {}
+    
+    db = SessionLocal()
+    try:
+        # Update voting behavior settings
+        for key in ['vpnmode', 'cooldown_count', 'cooldown', 'cnt_to_pause', 'long_pause_seconds']:
+            if key in data:
+                setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+                if not setting:
+                    setting = SystemSetting(key=key)
+                    db.add(setting)
+                setting.value = str(data[key])
+        
+        db.commit()
+        return jsonify({'success': True})
     finally:
         db.close()
 

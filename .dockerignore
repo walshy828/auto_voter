@@ -4,3 +4,9 @@ Dockerfile
 .git
 .gitignore
 .env
+scripts/
+*.md
+__pycache__
+*.pyc
+.venv
+.DS_Store
