@@ -243,20 +243,35 @@ def connect_vpn():
     """Connect to ExpressVPN if not already connected."""
     try:
         import subprocess
-        # Check if already connected
-        result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=5)
-        if 'Connected' in result.stdout:
-            print("[VPN] Already connected")
-            return True
+        # Check if expressvpn command exists first (quick check)
+        try:
+            subprocess.run(['which', 'expressvpn'], capture_output=True, timeout=2, check=True)
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+            print("[VPN] ExpressVPN not found or not available")
+            return False
         
-        # Connect to smart location
+        # Check if already connected (short timeout)
+        try:
+            result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=3)
+            if 'Connected' in result.stdout:
+                print("[VPN] Already connected")
+                return True
+        except subprocess.TimeoutExpired:
+            print("[VPN] Status check timed out")
+            return False
+        
+        # Connect to smart location (reduced timeout)
         print("[VPN] Connecting to ExpressVPN...")
-        result = subprocess.run(['expressvpn', 'connect', 'smart'], capture_output=True, text=True, timeout=30)
-        if result.returncode == 0:
-            print("[VPN] Connected successfully")
-            return True
-        else:
-            print(f"[VPN] Connection failed: {result.stderr}")
+        try:
+            result = subprocess.run(['expressvpn', 'connect', 'smart'], capture_output=True, text=True, timeout=15)
+            if result.returncode == 0:
+                print("[VPN] Connected successfully")
+                return True
+            else:
+                print(f"[VPN] Connection failed: {result.stderr}")
+                return False
+        except subprocess.TimeoutExpired:
+            print("[VPN] Connection timed out after 15s")
             return False
     except Exception as e:
         print(f"[VPN] Error connecting: {e}")
@@ -266,20 +281,35 @@ def disconnect_vpn():
     """Disconnect from ExpressVPN."""
     try:
         import subprocess
-        # Check if connected
-        result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=5)
-        if 'Not connected' in result.stdout:
-            print("[VPN] Already disconnected")
+        # Check if expressvpn command exists first
+        try:
+            subprocess.run(['which', 'expressvpn'], capture_output=True, timeout=2, check=True)
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+            print("[VPN] ExpressVPN not found, skipping disconnect")
             return True
+        
+        # Check if connected (short timeout)
+        try:
+            result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=3)
+            if 'Not connected' in result.stdout:
+                print("[VPN] Already disconnected")
+                return True
+        except subprocess.TimeoutExpired:
+            print("[VPN] Status check timed out")
+            return False
         
         # Disconnect
         print("[VPN] Disconnecting from ExpressVPN...")
-        result = subprocess.run(['expressvpn', 'disconnect'], capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            print("[VPN] Disconnected successfully")
-            return True
-        else:
-            print(f"[VPN] Disconnection failed: {result.stderr}")
+        try:
+            result = subprocess.run(['expressvpn', 'disconnect'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                print("[VPN] Disconnected successfully")
+                return True
+            else:
+                print(f"[VPN] Disconnection failed: {result.stderr}")
+                return False
+        except subprocess.TimeoutExpired:
+            print("[VPN] Disconnect timed out after 5s")
             return False
     except Exception as e:
         print(f"[VPN] Error disconnecting: {e}")
