@@ -34,4 +34,4 @@ ENV FLASK_APP=app.api:app
 EXPOSE 8080
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "app.api:app", "--workers", "1", "--worker-class", "gevent", "--threads", "4"]
+CMD ["python", "-m", "app.api"]
