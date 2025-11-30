@@ -19,14 +19,20 @@ def _run_vote_wrapper(item_id: int, worker_id: int, log_path: str = None):
         if log_path:
             try:
                 os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                lf = open(log_path, 'a+')
+                # Open in unbuffered mode for real-time streaming
+                lf = open(log_path, 'a+', buffering=1)  # Line buffering
                 # dup file descriptor to stdout/stderr
                 os.dup2(lf.fileno(), 1)
                 os.dup2(lf.fileno(), 2)
+                # Make stdout/stderr unbuffered
+                import sys
+                sys.stdout = os.fdopen(1, 'w', buffering=1)
+                sys.stderr = os.fdopen(2, 'w', buffering=1)
             except Exception as e:
                 print(f"Failed to open log file {log_path}: {e}")
 
         print(f"[Worker {worker_id}] Starting vote process for item {item_id}")
+
         
         import app.auto_voter_queue as avq
         db = SessionLocal()
