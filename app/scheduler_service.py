@@ -49,8 +49,8 @@ def run_poll_results_scheduler():
         
         # Check if enough time has elapsed since last run
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        if config.last_run_at:
-            next_run = config.last_run_at + timedelta(minutes=config.interval_minutes)
+        if config.last_run:
+            next_run = config.last_run + timedelta(minutes=config.interval_minutes)
             if now < next_run:
                 # Not time yet
                 return
@@ -59,7 +59,7 @@ def run_poll_results_scheduler():
         run_all_polls(db_session=db)
         
         # Update last run time
-        config.last_run_at = now
+        config.last_run = now
         db.commit()
         print(f"[Poll Scheduler] Completed at {now.strftime('%Y-%m-%d %H:%M:%S')}")
         
