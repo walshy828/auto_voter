@@ -1089,4 +1089,6 @@ def index():
 
 if __name__ == '__main__':
     # use socketio.run so WebSocket transports work (eventlet/gevent)
-    socketio.run(app, host='0.0.0.0', port=8080, debug=True)
+    # Only enable debug in development
+    debug_mode = os.environ.get('FLASK_ENV', 'production') == 'development'
+    socketio.run(app, host='0.0.0.0', port=8080, debug=debug_mode)
