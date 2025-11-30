@@ -4,9 +4,14 @@ Run this in a separate process (supervisord/systemd or a separate container) to 
 import os
 import time
 from apscheduler.schedulers.blocking import BlockingScheduler
-from app.db import SessionLocal
+from app.db import SessionLocal, init_db
 from app.models import QueueItem, QueueStatus, PollSchedulerConfig
 from app.worker import start_queue_item_background
+
+# Initialize database tables if they don't exist
+print("[Scheduler Service] Initializing database...")
+init_db()
+print("[Scheduler Service] Database initialized")
 
 
 def pick_and_start():

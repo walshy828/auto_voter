@@ -11,15 +11,31 @@ services:
       - /dev/net/tun
     environment:
       - FLASK_ENV=production
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
       - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
       - ADMIN_USER=${ADMIN_USER}
       - ADMIN_PASS=${ADMIN_PASS}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - AUTO_VOTER_DB=sqlite:///./data/auto_voter.db
+      - AUTO_VOTER_LOG_DIR=./data/logs
+      - INFLUX_URL=${INFLUX_URL}
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+      - INFLUX_ORG=${INFLUX_ORG}
+      - INFLUX_BUCKET=${INFLUX_BUCKET}
+      - TOR_SOCKS_PORT=${TOR_SOCKS_PORT:-9050}
+      - TOR_CONTROL_PORT=${TOR_CONTROL_PORT:-9051}
+      - TOR_PASSWORD=${TOR_PASSWORD:-welcomeTomyPa55word}
     ports:
-      - "8080:8080"
+      - "8282:8080"
     volumes:
-      - ./data:/app/data
-    depends_on:
-      - scheduler
+      - /docker/auto_voter/data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   scheduler:
     build:
@@ -32,7 +48,17 @@ services:
     devices:
       - /dev/net/tun
     environment:
-      - AUTO_VOTER_SCHEDULE_INTERVAL=30
+      - AUTO_VOTER_SCHEDULE_INTERVAL=${AUTO_VOTER_SCHEDULE_INTERVAL:-30}
       - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
+      - AUTO_VOTER_DB=sqlite:///./data/auto_voter.db
+      - AUTO_VOTER_LOG_DIR=./data/logs
+      - INFLUX_URL=${INFLUX_URL}
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+      - INFLUX_ORG=${INFLUX_ORG}
+      - INFLUX_BUCKET=${INFLUX_BUCKET}
+      - TOR_SOCKS_PORT=${TOR_SOCKS_PORT:-9050}
+      - TOR_CONTROL_PORT=${TOR_CONTROL_PORT:-9051}
+      - TOR_PASSWORD=${TOR_PASSWORD:-welcomeTomyPa55word}
     volumes:
-      - ./data:/app/data
+      - /docker/auto_voter/data:/app/data
+    restart: unless-stopped

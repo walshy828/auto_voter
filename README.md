@@ -86,7 +86,74 @@ Worker control and cancellation
 - A monitor thread updates the DB record when the worker process exits, setting `status` and `exit_code`.
 - You can cancel a running queue item; this will send SIGTERM to the worker PID and mark the item canceled.
 
-Docker
+
+## Docker Deployment
+
+### Quick Start with Docker Compose
+
+The application can be deployed using Docker with two services:
+- **web**: Flask application with SocketIO
+- **scheduler**: Background scheduler for queue and poll processing
+
+#### Prerequisites
+
+1. Docker and Docker Compose installed
+2. ExpressVPN activation code (optional, for VPN features)
+
+#### Configuration
+
+Create a `.env` file in your project directory with the required environment variables:
+
+```bash
+# Required
+ADMIN_USER=admin
+ADMIN_PASS=your_secure_password
+FLASK_SECRET_KEY=your_random_secret_key
+
+# Optional - ExpressVPN
+EXPRESSVPN_ACTIVATION_CODE=your_activation_code
+
+# Optional - InfluxDB
+INFLUX_URL=http://your-influx-server:8086
+INFLUX_TOKEN=your_influx_token
+INFLUX_ORG=your_org
+INFLUX_BUCKET=your_bucket
+
+# Optional - Tor
+TOR_SOCKS_PORT=9050
+TOR_CONTROL_PORT=9051
+TOR_PASSWORD=welcomeTomyPa55word
+```
+
+#### Deploy with Docker Compose
+
+```bash
+# Using docker-compose
+docker-compose up -d
+
+# Or using Portainer stack with the provided docker-compose.yml
+```
+
+The web interface will be available at `http://localhost:8282`
+
+#### Volume Mounts
+
+Data is persisted in `/docker/auto_voter/data` which contains:
+- SQLite database (`auto_voter.db`)
+- Worker logs (`logs/`)
+
+#### Troubleshooting
+
+**ExpressVPN Issues:**
+- The container requires `NET_ADMIN` capability and `/dev/net/tun` device access
+- If ExpressVPN fails to start, the application will continue without VPN features
+- Check logs: `docker-compose logs web` or `docker-compose logs scheduler`
+
+**Database Issues:**
+- Ensure the data directory has proper permissions
+- The database will be created automatically on first run
+
+### Manual Docker Build
 
 Build and run the container (example):
 
