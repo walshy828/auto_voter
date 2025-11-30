@@ -254,7 +254,13 @@ def connect_vpn():
         try:
             result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=3)
             if 'Connected' in result.stdout:
-                print("[VPN] Already connected")
+                # Extract location from status output
+                location = "Unknown"
+                for line in result.stdout.split('\n'):
+                    if 'Connected to' in line:
+                        location = line.split('Connected to')[-1].strip()
+                        break
+                print(f"[VPN] Already connected to: {location}")
                 return True
         except subprocess.TimeoutExpired:
             print("[VPN] Status check timed out")
@@ -265,7 +271,13 @@ def connect_vpn():
         try:
             result = subprocess.run(['expressvpn', 'connect', 'smart'], capture_output=True, text=True, timeout=15)
             if result.returncode == 0:
-                print("[VPN] Connected successfully")
+                # Get the connected location
+                location = "Unknown"
+                for line in result.stdout.split('\n'):
+                    if 'Connected to' in line:
+                        location = line.split('Connected to')[-1].strip()
+                        break
+                print(f"[VPN] ✓ Connected successfully to: {location}")
                 return True
             else:
                 print(f"[VPN] Connection failed: {result.stderr}")
@@ -527,11 +539,12 @@ def new_location():
             vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
 
     try:
-        connect_alias(vpnloc[vpnlocat]["alias"])
-        if print_debug_msg:
-            print(f"VPN connected to: {vpnloc[vpnlocat]['alias']}")
+        location_alias = vpnloc[vpnlocat]["alias"]
+        print(f"[VPN] Switching to location: {location_alias}")
+        connect_alias(location_alias)
+        print(f"[VPN] ✓ Successfully switched to: {location_alias}")
     except Exception as e:
-        print(f"VPN Connection Error: {type(e).__name__}: {e}")
+        print(f"[VPN] ✗ Connection Error switching to {vpnloc[vpnlocat]['alias']}: {type(e).__name__}: {e}")
         if print_debug_msg:
             import traceback
             traceback.print_exc()

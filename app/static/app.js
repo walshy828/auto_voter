@@ -96,27 +96,40 @@ async function refreshPolls() {
       : '<span class="badge bg-success">Active</span>';
 
     tr.innerHTML = `
-      <td>${escapeHtml(p.entryname)}</td>
-      <td>${escapeHtml(p.pollid)}</td>
-      <td>${escapeHtml(p.answerid)}</td>
-      <td>${statusBadge}</td>
-      <td>${p.use_tor ? '<span class="badge bg-warning text-dark">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
-      <td>${stats}</td>
-      <td class="small">${lastUpdate}</td>
-      <td>
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-info btn-view-snapshot" data-id="${p.id}" title="View Snapshot">
-            <i class="bi bi-eye"></i>
+      <td data-label="">${escapeHtml(p.entryname)}</td>
+      <td data-label="Poll ID:">${escapeHtml(p.pollid)}</td>
+      <td data-label="Answer ID:">${escapeHtml(p.answerid)}</td>
+      <td data-label="Status:">${statusBadge}</td>
+      <td data-label="Tor:">${p.use_tor ? '<span class="badge bg-warning text-dark">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
+      <td data-label="Stats:">${stats}</td>
+      <td data-label="Last Updated:" class="small">${lastUpdate}</td>
+      <td data-label="Actions:">
+        <div class="dropdown poll-actions-dropdown">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-three-dots-vertical"></i><span class="d-none d-md-inline ms-1">Actions</span>
           </button>
-          <button class="btn btn-outline-primary btn-refresh-results" data-id="${p.id}" title="Refresh Results">
-            <i class="bi bi-arrow-clockwise"></i>
-          </button>
-          <button class="btn btn-outline-secondary btn-edit-poll" data-id="${p.id}" title="Edit">
-            <i class="bi bi-pencil"></i>
-          </button>
-          <button class="btn btn-outline-danger btn-delete-poll" data-id="${p.id}" title="Delete">
-            <i class="bi bi-trash"></i>
-          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item btn-add-to-queue" href="#" data-id="${p.id}" data-pollid="${escapeHtml(p.pollid)}" data-answerid="${escapeHtml(p.answerid)}" data-name="${escapeHtml(p.entryname)}" data-use-tor="${p.use_tor}">
+              <i class="bi bi-plus-circle text-success"></i>Add to Queue
+            </a></li>
+            <li><a class="dropdown-item" href="https://poll.fm/${escapeHtml(p.pollid)}/results/" target="_blank" rel="noopener noreferrer">
+              <i class="bi bi-box-arrow-up-right text-primary"></i>Go To Poll
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item btn-view-snapshot" href="#" data-id="${p.id}">
+              <i class="bi bi-eye text-info"></i>View Snapshot
+            </a></li>
+            <li><a class="dropdown-item btn-refresh-results" href="#" data-id="${p.id}">
+              <i class="bi bi-arrow-clockwise text-primary"></i>Refresh Results
+            </a></li>
+            <li><a class="dropdown-item btn-edit-poll" href="#" data-id="${p.id}">
+              <i class="bi bi-pencil text-secondary"></i>Edit
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item btn-delete-poll" href="#" data-id="${p.id}">
+              <i class="bi bi-trash text-danger"></i>Delete
+            </a></li>
+          </ul>
         </div>
       </td>
     `;
@@ -124,6 +137,89 @@ async function refreshPolls() {
   });
 
   // Attach listeners
+  document.querySelectorAll('.btn-add-to-queue').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      console.log('[Add to Queue] Button clicked');
+
+      try {
+        const pollId = e.currentTarget.dataset.id;
+        const pollid = e.currentTarget.dataset.pollid;
+        const answerid = e.currentTarget.dataset.answerid;
+        const name = e.currentTarget.dataset.name;
+        const useTor = e.currentTarget.dataset.useTor === '1' || e.currentTarget.dataset.useTor === 'true';
+
+        console.log('[Add to Queue] Poll data:', { pollId, pollid, answerid, name, useTor });
+
+        // Switch to Queue tab using the correct selector
+        document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+        document.querySelectorAll('.content-section').forEach(section => section.classList.add('d-none'));
+
+        // Find and activate the Queue tab button
+        const queueTabButton = document.querySelector('[data-target="section-queue"]');
+        const queueSection = document.getElementById('section-queue');
+
+        console.log('[Add to Queue] Queue elements:', { queueTabButton, queueSection });
+
+        if (queueTabButton) {
+          queueTabButton.classList.add('active');
+          console.log('[Add to Queue] Queue tab activated');
+        }
+        if (queueSection) {
+          queueSection.classList.remove('d-none');
+          console.log('[Add to Queue] Queue section shown');
+        }
+
+        // Pre-populate the queue modal form
+        const pollIdInput = document.getElementById('q_poll_id');
+        const pollidInput = document.getElementById('q_pollid');
+        const answeridInput = document.getElementById('q_answerid');
+        const nameInput = document.getElementById('q_name');
+        const torCheckbox = document.getElementById('q_use_tor');
+
+        console.log('[Add to Queue] Form elements:', { pollIdInput, pollidInput, answeridInput, nameInput, torCheckbox });
+
+        if (pollIdInput) pollIdInput.value = pollId;
+        if (pollidInput) pollidInput.value = pollid;
+        if (answeridInput) answeridInput.value = answerid;
+        if (nameInput) nameInput.value = name;
+        if (torCheckbox) torCheckbox.checked = useTor;
+
+        // Clear the poll select dropdown
+        const pollSelect = document.getElementById('pollSelect');
+        if (pollSelect) pollSelect.value = '';
+
+        // Wait a moment for the tab to switch, then open the modal
+        setTimeout(() => {
+          const modalElement = document.getElementById('addQueueModal');
+          console.log('[Add to Queue] Modal element:', modalElement);
+
+          if (modalElement) {
+            const addQueueModal = new bootstrap.Modal(modalElement);
+            addQueueModal.show();
+            console.log('[Add to Queue] Modal opened');
+
+            // Focus on votes input for quick entry
+            setTimeout(() => {
+              const votesInput = document.getElementById('q_votes');
+              if (votesInput) {
+                votesInput.focus();
+                console.log('[Add to Queue] Votes input focused');
+              }
+            }, 300);
+          } else {
+            console.error('[Add to Queue] Modal element not found!');
+          }
+        }, 100);
+
+        showToast(`Pre-filled queue form with "${name}"`, 'info');
+      } catch (error) {
+        console.error('[Add to Queue] Error:', error);
+        showToast('Error opening queue form: ' + error.message, 'danger');
+      }
+    });
+  });
+
   document.querySelectorAll('.btn-delete-poll').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       if (!confirm('Delete this poll?')) return;

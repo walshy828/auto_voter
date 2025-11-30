@@ -8,6 +8,104 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* Mobile-optimized polls cards */
+    @media (max-width: 767px) {
+      #pollsTable thead {
+        display: none;
+      }
+
+      #pollsTable tbody {
+        display: block;
+      }
+
+      #pollsTable tr {
+        display: block;
+        margin-bottom: 1rem;
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        background: white;
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+      }
+
+      #pollsTable td {
+        display: block;
+        text-align: left !important;
+        padding: 0.5rem 0.75rem;
+        border: none;
+        border-bottom: 1px solid #f0f0f0;
+      }
+
+      #pollsTable td:last-child {
+        border-bottom: none;
+      }
+
+      #pollsTable td:before {
+        content: attr(data-label);
+        font-weight: 600;
+        display: inline-block;
+        width: 120px;
+        color: #6c757d;
+        font-size: 0.875rem;
+      }
+
+      #pollsTable td:first-child {
+        background: #f8f9fa;
+        font-weight: 600;
+        font-size: 1.05rem;
+        border-radius: 0.5rem 0.5rem 0 0;
+      }
+
+      #pollsTable td:first-child:before {
+        display: none;
+      }
+
+      /* Action dropdown in mobile */
+      #pollsTable .dropdown-toggle {
+        width: 100%;
+        min-height: 44px;
+      }
+    }
+
+    /* Desktop action dropdown */
+    @media (min-width: 768px) {
+      .poll-actions-dropdown {
+        min-width: 120px;
+      }
+    }
+
+    /* Touch-friendly action menu */
+    .dropdown-menu {
+      min-width: 180px;
+    }
+
+    .dropdown-item {
+      padding: 0.625rem 1rem;
+      font-size: 0.9375rem;
+    }
+
+    .dropdown-item i {
+      width: 20px;
+      margin-right: 8px;
+    }
+
+    /* Fix dropdown clipping in table-responsive (desktop only) */
+    @media (min-width: 768px) {
+      .table-responsive {
+        overflow: visible !important;
+      }
+
+      /* Ensure dropdown appears above table */
+      #pollsTable .dropdown {
+        position: static;
+      }
+
+      #pollsTable .dropdown-menu {
+        position: absolute;
+        z-index: 1050;
+      }
+    }
+  </style>
 </head>
 
 <body>
