@@ -882,10 +882,57 @@ function initializeSocketIO() {
     console.error('Socket.IO error:', err);
   });
 
+  // Helper function to optimistically update queue item status in the DOM
+  function updateQueueItemStatus(itemId, newStatus) {
+    const tbody = document.querySelector('#queueTable tbody');
+    if (!tbody) return;
+
+    // Find the row for this item
+    const rows = tbody.querySelectorAll('tr');
+    for (const row of rows) {
+      const itemIdCell = row.querySelector('td:first-child');
+      if (itemIdCell && itemIdCell.textContent.trim() == itemId) {
+        // Find the status badge cell (usually 3rd or 4th column)
+        const statusCell = row.querySelector('.badge');
+        if (statusCell) {
+          // Update the badge
+          statusCell.className = 'badge ' + getStatusBadgeClass(newStatus);
+          statusCell.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+          console.log(`Updated item ${itemId} status to ${newStatus} in DOM`);
+        }
+        break;
+      }
+    }
+  }
+
+  // Helper to get Bootstrap badge class for status
+  function getStatusBadgeClass(status) {
+    switch (status) {
+      case 'queued': return 'bg-secondary';
+      case 'running': return 'bg-primary';
+      case 'completed': return 'bg-success';
+      case 'canceled': return 'bg-danger';
+      default: return 'bg-secondary';
+    }
+  }
+
   socket.on('queue_update', (data) => {
     console.log('Queue update received:', data);
-    refreshQueue();
-    refreshWorkers();
+
+    // Optimistically update the UI immediately for status changes
+    if (data.type === 'status' && data.item_id) {
+      updateQueueItemStatus(data.item_id, data.status);
+    }
+
+    // Then refresh the full queue (non-blocking)
+    refreshQueue().catch(err => {
+      console.error('Failed to refresh queue:', err);
+    });
+
+    refreshWorkers().catch(err => {
+      console.error('Failed to refresh workers:', err);
+    });
+
     if (data.type === 'complete' || data.type === 'cancel') {
       showToast(`Job #${data.item_id} ${data.status || 'updated'}`, 'info');
     }
