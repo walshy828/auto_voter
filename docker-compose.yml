@@ -12,6 +12,8 @@ services:
     environment:
       - FLASK_ENV=production
       - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
+      - ADMIN_USER=${ADMIN_USER}
+      - ADMIN_PASS=${ADMIN_PASS}
     ports:
       - "8080:8080"
     volumes:

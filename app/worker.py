@@ -46,6 +46,7 @@ def _run_vote_wrapper(item_id: int, worker_id: int, log_path: str = None):
         avq.p2_pause = it.pause
         avq.use_vpn = bool(it.use_vpn)
         avq.use_tor = bool(it.use_tor)
+        avq.jobname = it.queue_name or f"poll_{it.pollid}"
         
         # Set progress tracking globals
         avq.current_item_id = item_id
@@ -113,13 +114,13 @@ def _monitor_process(proc: multiprocessing.Process, item_id: int, worker_id: int
         it = db.query(QueueItem).filter(QueueItem.id == item_id).first()
         wp = db.query(WorkerProcess).filter(WorkerProcess.id == worker_id).first()
         if wp:
-            wp.end_time = datetime.datetime.utcnow()
+            wp.end_time = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
             wp.exit_code = exitcode
             wp.result_msg = f"exitcode={exitcode}"
         if it:
             it.exit_code = exitcode
             it.pid = None
-            it.completed_at = datetime.datetime.utcnow()
+            it.completed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
             it.status = QueueStatus.completed if exitcode == 0 else QueueStatus.canceled
             it.result_msg = f"exitcode={exitcode}"
             it.worker_id = worker_id
@@ -159,15 +160,23 @@ def start_queue_item_background(item_id: int, socketio=None):
         raise ValueError('item not queued')
 
     it.status = QueueStatus.running
-    it.started_at = datetime.datetime.utcnow()
+    it.started_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    
+    # Emit 'running' status update immediately
+    if socketio:
+        try:
+            socketio.emit('queue_update', {'type': 'status', 'item_id': item_id, 'status': 'running'})
+        except Exception as e:
+            print(f"[start_queue_item_background] Failed to emit running status: {e}")
+
     # prepare log file
     logs_dir = os.environ.get('AUTO_VOTER_LOG_DIR', './data/logs')
     os.makedirs(logs_dir, exist_ok=True)
-    timestamp = datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    timestamp = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime('%Y%m%d%H%M%S')
     log_path = os.path.join(logs_dir, f'job_{item_id}_{timestamp}.log')
 
     # create worker process metadata
-    wp = WorkerProcess(pid=None, item_id=item_id, log_path=log_path, start_time=datetime.datetime.utcnow())
+    wp = WorkerProcess(pid=None, item_id=item_id, log_path=log_path, start_time=datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None))
     db.add(wp)
     db.commit()
     db.refresh(wp)
@@ -176,7 +185,9 @@ def start_queue_item_background(item_id: int, socketio=None):
     it.worker_id = wp.id
     db.commit()
 
-    proc = multiprocessing.Process(target=_run_vote_wrapper, args=(item_id, wp.id, log_path))
+    # Use 'spawn' context to ensure a clean process without gevent monkey-patching artifacts
+    ctx = multiprocessing.get_context('spawn')
+    proc = ctx.Process(target=_run_vote_wrapper, args=(item_id, wp.id, log_path))
     proc.start()
 
     # persist PID
@@ -227,11 +238,11 @@ def stop_queue_item(item_id: int, sig=signal.SIGTERM):
         pass
 
     it.status = QueueStatus.canceled
-    it.completed_at = datetime.datetime.utcnow()
+    it.completed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     it.result_msg = f'killed pid {pid}'
     it.pid = None
     if wp:
-        wp.end_time = datetime.datetime.utcnow()
+        wp.end_time = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         wp.exit_code = -1
         wp.result_msg = it.result_msg
         wp.pid = None

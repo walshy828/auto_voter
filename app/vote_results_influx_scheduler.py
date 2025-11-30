@@ -96,16 +96,17 @@ def test():
             #start = "1970-01-01T00:00:00Z"
             #stop = datetime.utcnow().isoformat() + "Z"
             start = "1970-01-01T00:00:00Z"
-            stop = datetime.utcnow().isoformat() + "Z"
+            stop = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
             delete_api.delete(start, stop, '_measurement="states"', bucket=INFLUX_BUCKET, org=INFLUX_ORG)
             print("Test delete complete.")
     except Exception as e:
         print(f"Test delete failed: {e}")
 
-def extract_poll_results(url, pollid):
-    if pollid in pollsdone:
+def extract_poll_results(url, pollid, force=False):
+    if not force and pollid in pollsdone:
         return
-    pollsdone.append(pollid)
+    if not force:
+        pollsdone.append(pollid)
 
     try:
         response = requests.get(url)
@@ -203,7 +204,7 @@ def extract_poll_results(url, pollid):
                     votes=answer['votes'],
                     place=answer['place'],
                     percent=answer['percent'],
-                    updated_at=datetime.utcnow()
+                    updated_at=datetime.now(timezone.utc).replace(tzinfo=None)
                 )
                 db.add(snapshot)
             
@@ -211,7 +212,7 @@ def extract_poll_results(url, pollid):
             poll_record.status = poll_status
             poll_record.poll_title = page_title
             poll_record.total_poll_votes = total_poll_votes
-            poll_record.last_snapshot_at = datetime.utcnow()
+            poll_record.last_snapshot_at = datetime.now(timezone.utc).replace(tzinfo=None)
             
             # Find stats for THIS poll's target answer (match by entryname)
             # Normalize text for better matching (remove spaces, commas, lowercase)
@@ -243,7 +244,7 @@ def extract_poll_results(url, pollid):
             for answer in all_answers:
                 pr = PollResult(
                     poll_id=poll_record.id,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
                     answer_text=answer['answer_text'],
                     votes=answer['votes'],
                     percent=answer['percent']

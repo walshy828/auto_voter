@@ -20,8 +20,9 @@ import app.config as config
 
 # --- Global Configs --- #
 QUEUE_FILE = 'queue.json'
-polls = config.polls
+# polls configuration is now passed via queue item parameters
 pollToRun = 0
+jobname = "default_poll"  # Will be set by worker.py
 num_threads = 100            #Optimied: 110
 start_totalToRun =1000
 start_process = 2 #BATCHES
@@ -74,8 +75,10 @@ proxies = {
     'http': f'socks5h://127.0.0.1:{TOR_SOCKS_PORT}',
     'https': f'socks5h://127.0.0.1:{TOR_SOCKS_PORT}'
 }
-lock = multiprocessing.Lock()
-count_good = multiprocessing.Value('i', 0)
+# Use threading instead of multiprocessing for gevent compatibility
+# The worker runs in a single process, so threading is sufficient
+lock = threading.Lock()
+count_good_value = 0  # Simple integer instead of multiprocessing.Value
 
 # Progress tracking globals
 current_item_id = None
@@ -155,9 +158,10 @@ def add_to_queue(poll_index_to_run,my_jobname,my_pollid,my_answerid, votes, thre
         answerid=my_answerid
         jobname=my_jobname
     else:
-        pollid = polls[poll_index_to_run][1]
-        answerid = polls[poll_index_to_run][2]
-        jobname = polls[poll_index_to_run][0]
+        # Fallback: use parameters if polls array doesn't exist
+        pollid = my_pollid if my_pollid else 0
+        answerid = my_answerid if my_answerid else 0
+        jobname = my_jobname if my_jobname else "unknown_poll"
 
     task_item = {
         "jobname": jobname,
@@ -212,7 +216,7 @@ def update_queue_progress(item_id, votes_cast, votes_success, status):
                 item.votes_success = votes_success
                 item.success_rate = (votes_success / votes_cast * 100) if votes_cast > 0 else 0
                 item.current_status = status
-                item.last_update = datetime.datetime.utcnow()
+                item.last_update = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
                 db.commit()
                 
                 # Emit Socket.IO event if socketio instance is available
@@ -247,23 +251,30 @@ def vote_start(start_mode):
     - Each loop: switches VPN (if use_vpn=True and use_tor=False), runs threads, pauses
     - Adaptive pausing: if success rate < 60% and not using Tor, extends pause time
     """
-    global RunPerScript, cntToRun
-    
-    # Recalculate RunPerScript based on current globals
-    # This is critical because worker.py sets start_totalToRun/num_threads but might not update RunPerScript
-    if num_threads > 0:
-        RunPerScript = start_totalToRun // num_threads
-    else:
-        RunPerScript = 0
-    cntToRun = RunPerScript
+    try:
+        print(f"[vote_start] Starting with mode={start_mode}")
+        global RunPerScript, cntToRun
+        
+        # Recalculate RunPerScript based on current globals
+        # This is critical because worker.py sets start_totalToRun/num_threads but might not update RunPerScript
+        if num_threads > 0:
+            RunPerScript = start_totalToRun // num_threads
+        else:
+            RunPerScript = 0
+        cntToRun = RunPerScript
+        
+        print(f"[vote_start] Calculated RunPerScript={RunPerScript}, cntToRun={cntToRun}")
 
-    if start_mode == 1:
-        run_multi_scripts(num_threads, cntToRun)
-    elif start_mode == 2:
-        # Reset the counter at the start of the entire voting session
-        if DEBUG_MODE:
-            print(f"[DEBUG] Resetting count_good. Previous value: {count_good.value}")
-        count_good.value = 0
+        if start_mode == 1:
+            print(f"[vote_start] Running simple mode")
+            run_multi_scripts(num_threads, cntToRun)
+        elif start_mode == 2:
+            print(f"[vote_start] Running batch mode")
+            # Reset the counter at the start of the entire voting session
+            global count_good_value
+            if DEBUG_MODE:
+                print(f"[DEBUG] Resetting count_good. Previous value: {count_good_value}")
+        count_good_value = 0
         
         # Calculate total votes per thread we need to run
         # Note: RunPerScript = start_totalToRun // num_threads
@@ -271,6 +282,8 @@ def vote_start(start_mode):
         
         total_ran_per_thread = 0
         batch_index = 0
+        
+        # print(f"[vote_start] Entering batch loop. RunPerScript={RunPerScript}")
         
         while total_ran_per_thread < RunPerScript:
             batch_index += 1
@@ -281,19 +294,25 @@ def vote_start(start_mode):
             remaining_per_thread = RunPerScript - total_ran_per_thread
             to_run_this_batch = min(p2_PerRun, remaining_per_thread)
             
+            # print(f"[vote_start] Batch {batch_index}: to_run_this_batch={to_run_this_batch}, remaining={remaining_per_thread}")
+            
             if to_run_this_batch <= 0:
                 break
 
             starttime = datetime.datetime.now()
 
             # Switch VPN location only if using VPN and NOT using Tor
+            # print(f"[vote_start] use_vpn={use_vpn}, use_tor={use_tor}")
             if use_vpn and not use_tor:
+                # print(f"[vote_start] Calling new_location()...")
                 new_location()
+                # print(f"[vote_start] new_location() completed")
             
             # Run the voting threads
             if DEBUG_MODE:
                 print(f"[DEBUG] Batch {batch_index}: Running {num_threads} threads x {to_run_this_batch} votes")
             
+            print(f"[vote_start] Calling run_multi_scripts({num_threads}, {to_run_this_batch})...")
             run_multi_scripts(num_threads, to_run_this_batch)
             
             # Update counters
@@ -307,7 +326,7 @@ def vote_start(start_mode):
             # We can't easily track per-batch success without another counter, but we can track delta
             # However, for the UI, we care about overall progress
             
-            PercentGood = (count_good.value / max(1, WhereAt)) * 100
+            PercentGood = (count_good_value / max(1, WhereAt)) * 100
 
             # Print progress
             now = datetime.datetime.now()
@@ -315,14 +334,14 @@ def vote_start(start_mode):
             TimeRun = (now - starttime).total_seconds()
 
             print(f"{nowFormat}: Batch {batch_index} done. {to_run_this_batch} per thread. "
-                  f"Overall: {count_good.value}/{WhereAt} ({PercentGood:.1f}%)")
+                  f"Overall: {count_good_value}/{WhereAt} ({PercentGood:.1f}%)")
             
             # Update progress in database and emit Socket.IO event
             if current_item_id:
                 update_queue_progress(
                     current_item_id,
                     WhereAt,
-                    count_good.value,
+                    count_good_value,
                     f"Batch {batch_index} complete"
                 )
             
@@ -343,7 +362,7 @@ def vote_start(start_mode):
                     update_queue_progress(
                         current_item_id,
                         WhereAt,
-                        count_good.value,
+                        count_good_value,
                         f"Pausing ({pause_time}s) - Low success rate"
                     )
                 
@@ -364,13 +383,18 @@ def vote_start(start_mode):
                     update_queue_progress(
                         current_item_id,
                         WhereAt,
-                        count_good.value,
+                        count_good_value,
                         f"Pausing ({p2_pause}s)"
                     )
                 
                 if DEBUG_MODE:
                     print(f"[DEBUG] Sleeping {p2_pause}s")
                 time.sleep(p2_pause)
+    except Exception as e:
+        print(f"[vote_start] FATAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 def print_debug(msg, levelofdetail=2):
 
@@ -380,18 +404,29 @@ def print_debug(msg, levelofdetail=2):
         print(f"{nowFormat}: {msg}")
 
 def run_multi_scripts(times, run_count):
+    # print(f"[run_multi_scripts] Starting {times} threads, {run_count} runs each")
     threads = []
     try:
         for i in range(times):
+            # print(f"[run_multi_scripts] Creating thread {i}")
             t = threading.Thread(target=auto_voter, args=(i, run_count))
             t.start()
             threads.append(t)
+            # print(f"[run_multi_scripts] Thread {i} started")
     except KeyboardInterrupt:
         print("\nCtrl+C detected! Stopping all threads...")
         stop_event.set()
+    except Exception as e:
+        print(f"[run_multi_scripts] Error creating threads: {e}")
+        import traceback
+        traceback.print_exc()
 
-    for t in threads:
+    # print(f"[run_multi_scripts] Waiting for {len(threads)} threads to complete...")
+    for i, t in enumerate(threads):
+        # print(f"[run_multi_scripts] Joining thread {i}...")
         t.join()
+        # print(f"[run_multi_scripts] Thread {i} completed")
+    # print(f"[run_multi_scripts] All threads completed")
 
 def new_location():
     global vpnlocat, vpn_votecnt
@@ -417,147 +452,157 @@ def new_location():
 
 
 def auto_voter(thread_id, RunCount):
-    global vpn_votecnt
-    cntpause = 0
-    switchvpn = False
-    NoVoteRun = 0
-    BATCH_GOOD = BATCH_BAD = BATCH_TOTAL = 0
-    VOTE_BATCH=[]
-    # Note: count_good is a shared counter across all threads, don't reset it here
+    try:
+        print(f"[auto_voter] Thread {thread_id} starting, RunCount={RunCount}")
+        global vpn_votecnt
+        cntpause = 0
+        switchvpn = False
+        NoVoteRun = 0
+        BATCH_GOOD = BATCH_BAD = BATCH_TOTAL = 0
+        VOTE_BATCH=[]
+        # Note: count_good is a shared counter across all threads, don't reset it here
 
-    if DEBUG_MODE:
-        print(f"[DEBUG] Thread {thread_id} started, will run {RunCount} votes")
+        if DEBUG_MODE:
+            print(f"[DEBUG] Thread {thread_id} started, will run {RunCount} votes")
 
-    time.sleep(random.randint(1,8))
+        # print(f"[auto_voter] Thread {thread_id} sleeping initial delay...")
+        time.sleep(random.randint(1,8))
+        # print(f"[auto_voter] Thread {thread_id} entering loop...")
 
-    for _ in range(RunCount):
-        if stop_event.is_set():
-            break
+        for _ in range(RunCount):
+            if stop_event.is_set():
+                # print(f"[auto_voter] Thread {thread_id} stop_event set, breaking...")
+                break
 
-        if RandomTimes:
-            timeoutseconds = random.randint(RandomMin, RandomMax)
-        else:
-            timeoutseconds = shortPauseSeconds
+            if RandomTimes:
+                timeoutseconds = random.randint(RandomMin, RandomMax)
+            else:
+                timeoutseconds = shortPauseSeconds
 
-        try:
-            session = requests.Session()
-            if use_tor:
-                try:
-                    with Controller.from_port(port=TOR_CONTROL_PORT) as controller:
-                        controller.authenticate(password=TOR_PASSWORD)
-                        controller.signal(Signal.NEWNYM)
-                        time.sleep(tor_delay)
-                except Exception as e:
-                    print(f"Tor Control Error (Port {TOR_CONTROL_PORT}): {e}")
-                    # Continue anyway, maybe just SOCKS is working or we don't need new identity yet
+            try:
+                # print(f"[auto_voter] Thread {thread_id} creating session...")
+                session = requests.Session()
+                if use_tor:
+                    try:
+                        with Controller.from_port(port=TOR_CONTROL_PORT) as controller:
+                            controller.authenticate(password=TOR_PASSWORD)
+                            controller.signal(Signal.NEWNYM)
+                            time.sleep(tor_delay)
+                    except Exception as e:
+                        print(f"Tor Control Error (Port {TOR_CONTROL_PORT}): {e}")
+                        # Continue anyway, maybe just SOCKS is working or we don't need new identity yet
+                    
+                    session.proxies.update(proxies)
                 
-                session.proxies.update(proxies)
-            
-            if DEBUG_MODE:
-                print(f"[DEBUG] Thread {thread_id} requesting poll {pollid}")
-            resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
-            resp.raise_for_status()
+                # print(f"[auto_voter] Thread {thread_id} requesting poll {pollid}...")
+                resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
+                # print(f"[auto_voter] Thread {thread_id} got response: {resp.status_code}")
+                resp.raise_for_status()
 
-            PD_REQ_AUTH = resp.cookies.get("PD_REQ_AUTH")
-            soup = BeautifulSoup(resp.text, 'html.parser')
+                PD_REQ_AUTH = resp.cookies.get("PD_REQ_AUTH")
+                soup = BeautifulSoup(resp.text, 'html.parser')
 
-            pz = next((i['value'] for i in soup.find_all('input', type='hidden') if i.get('name') == 'pz'), None)
-            vote_button = soup.find('a', attrs={'data-vote': True})
+                pz = next((i['value'] for i in soup.find_all('input', type='hidden') if i.get('name') == 'pz'), None)
+                vote_button = soup.find('a', attrs={'data-vote': True})
 
-            if vote_button:
-                data_vote = json.loads(html.unescape(vote_button['data-vote']))
-                payload = {
-                    "va": data_vote.get('at'),
-                    "pt": "0",
-                    "r": "1",
-                    "p": data_vote.get('id'),
-                    "a": f"{answerid}", #%2C
-                    "o": "",
-                    #"t": str(int(time.time())),
-                    "t": data_vote.get('t'),
-                    "token": data_vote.get('n'),
-                    "pz": pz
-                }
+                if vote_button:
+                    data_vote = json.loads(html.unescape(vote_button['data-vote']))
+                    payload = {
+                        "va": data_vote.get('at'),
+                        "pt": "0",
+                        "r": "1",
+                        "p": data_vote.get('id'),
+                        "a": f"{answerid}", #%2C
+                        "o": "",
+                        #"t": str(int(time.time())),
+                        "t": data_vote.get('t'),
+                        "token": data_vote.get('n'),
+                        "pz": pz
+                    }
 
-                headers = {
-                    "User-Agent": random.choice(useragents),
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                    "Cookie": f"PD_REQ_AUTH={PD_REQ_AUTH}; PDjs_poll_{pollid}={int(time.time())}",
-                    "Referer": f"https://poll.fm/{pollid}",
-                    "Priority": "u=0,i",
-                    "accept-language": "en-US,en;q=0.9",
-                    "accept-encoding": "gzip, deflate, br, zstd",
-                    "Upgrade-Insecure-Requests": "1"
+                    headers = {
+                        "User-Agent": random.choice(useragents),
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                        "Cookie": f"PD_REQ_AUTH={PD_REQ_AUTH}; PDjs_poll_{pollid}={int(time.time())}",
+                        "Referer": f"https://poll.fm/{pollid}",
+                        "Priority": "u=0,i",
+                        "accept-language": "en-US,en;q=0.9",
+                        "accept-encoding": "gzip, deflate, br, zstd",
+                        "Upgrade-Insecure-Requests": "1"
 
-                }
-                print_debug(payload, 2)
-                vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers)
-                soup_vote = BeautifulSoup(vote_resp.text, 'html.parser')
+                    }
+                    print_debug(payload, 2)
+                    vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers)
+                    soup_vote = BeautifulSoup(vote_resp.text, 'html.parser')
 
-                VOTE_GOOD = 0
-                if vote_resp.url.endswith("g=voted"):
-                    VOTE_GOOD=1
-                    NoVoteRun = 0
-                    #vote_success(thread_id)
-                    vpn_votecnt += 1
-                    with lock:
-                        count_good.value += 1
+                    VOTE_GOOD = 0
+                    if vote_resp.url.endswith("g=voted"):
+                        VOTE_GOOD=1
+                        NoVoteRun = 0
+                        #vote_success(thread_id)
+                        vpn_votecnt += 1
+                        global count_good_value
+                        with lock:
+                            count_good_value += 1
 
-                else:
-                    NoVoteRun += 1
+                    else:
+                        NoVoteRun += 1
 
-                if VOTE_GOOD==1:
-                    print_debug(f"Good: {vote_resp.url}",1)
-                else:
-                    print_debug(f"Failed: {vote_resp.url}",1)
+                    if VOTE_GOOD==1:
+                        print_debug(f"Good: {vote_resp.url}",1)
+                    else:
+                        print_debug(f"Failed: {vote_resp.url}",1)
 
-                if start_process==1 and ((vpn_maxvotes and vpn_votecnt >= vpn_maxvotes) or (not use_tor and NoVoteRun > 3)):
-                    switchvpn = True
+                    if start_process==1 and ((vpn_maxvotes and vpn_votecnt >= vpn_maxvotes) or (not use_tor and NoVoteRun > 3)):
+                        switchvpn = True
 
-                # Influx Record Building
-                title_str = soup_vote.title.string if soup_vote.title else "Unknown"
-                VOTE_BATCH.append(build_influx_record(VOTE_GOOD, title_str))
+                    # Influx Record Building
+                    title_str = soup_vote.title.string if soup_vote.title else "Unknown"
+                    VOTE_BATCH.append(build_influx_record(VOTE_GOOD, title_str))
 
-                BATCH_TOTAL += 1
-                if BATCH_TOTAL >= BATCH_SIZE:
+                    BATCH_TOTAL += 1
+                    if BATCH_TOTAL >= BATCH_SIZE:
+                        influx_write_records(VOTE_BATCH)
+                        VOTE_BATCH.clear()
+
+                if switchvpn:
+                    new_location()
+                    switchvpn = False
+
+                if CoolDownCount > 0 and NoVoteRun >= CoolDownCount:
+                    #print("G:" + str() + ";B:" + "; Cool until " + str(
+                    #    datetime.datetime.now() + datetime.timedelta(seconds=CoolDown)), 2, thread_id)
                     influx_write_records(VOTE_BATCH)
                     VOTE_BATCH.clear()
+                    time.sleep(CoolDown)
 
-            if switchvpn:
-                new_location()
-                switchvpn = False
+                cntpause = cntpause + 1
+                if cntToPause == 0:
+                    if DEBUG_MODE:
+                        print(f"[DEBUG] Thread {thread_id} pausing {timeoutseconds}s")
+                    time.sleep(timeoutseconds)
+                elif (cntpause == cntToPause):
+                    if DEBUG_MODE:
+                        print(f"[DEBUG] Thread {thread_id} long pause {longPauseSeconds}s")
+                    influx_write_records(VOTE_BATCH)
+                    VOTE_BATCH.clear()
+                    time.sleep(longPauseSeconds)
+                    cntpause = 0
 
-            if CoolDownCount > 0 and NoVoteRun >= CoolDownCount:
-                #print("G:" + str() + ";B:" + "; Cool until " + str(
-                #    datetime.datetime.now() + datetime.timedelta(seconds=CoolDown)), 2, thread_id)
-                influx_write_records(VOTE_BATCH)
-                VOTE_BATCH.clear()
-                time.sleep(CoolDown)
+            except Exception as e:
+                print(f"Voting error: {type(e).__name__}: {e}")
+                if print_debug_msg:
+                    import traceback
+                    traceback.print_exc()
+                time.sleep(2)
 
-            cntpause = cntpause + 1
-            if cntToPause == 0:
-                if DEBUG_MODE:
-                    print(f"[DEBUG] Thread {thread_id} pausing {timeoutseconds}s")
-                time.sleep(timeoutseconds)
-            elif (cntpause == cntToPause):
-                if DEBUG_MODE:
-                    print(f"[DEBUG] Thread {thread_id} long pause {longPauseSeconds}s")
-                influx_write_records(VOTE_BATCH)
-                VOTE_BATCH.clear()
-                time.sleep(longPauseSeconds)
-                cntpause = 0
-
-
-
-        except Exception as e:
-            print(f"Voting error: {type(e).__name__}: {e}")
-            if print_debug_msg:
-                import traceback
-                traceback.print_exc()
-            time.sleep(2)
-
-    influx_write_records(VOTE_BATCH)
-    VOTE_BATCH.clear()
+        influx_write_records(VOTE_BATCH)
+        VOTE_BATCH.clear()
+        print(f"[auto_voter] Thread {thread_id} completed successfully")
+    except Exception as e:
+        print(f"[auto_voter] Thread {thread_id} FATAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
 
 def vote_success(thread_id):
     print(f"[Thread {thread_id}] Vote success!")
@@ -579,7 +624,7 @@ def build_influx_record(VOTE_GOOD, title):
     unique_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
     unix_time = int(time.time() * 1e9)
     title_clean = influx_clean_str(title)
-    answer_script_name = influx_clean_str(polls[pollToRun][0])
+    answer_script_name = influx_clean_str(jobname)
     influx_str = (
         f"vote,"
         f"pollid={pollid},"
@@ -604,7 +649,7 @@ def build_influx_record(VOTE_GOOD, title):
         pv = PollVote(
             poll_id=poll_record.id if poll_record else None,
             pollid=str(pollid),
-            timestamp=datetime.datetime.utcnow(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             answerid=str(answerid),
             status=status_str,
             worker_id=None # We don't easily have worker_id here in this function scope without passing it down

@@ -57,15 +57,22 @@ def require_auth(f):
         # allow session-authenticated users or token-based admin
         try:
             if current_user and getattr(current_user, 'is_authenticated', False):
+                # print(f"[AUTH] User authenticated via session: {current_user.username}")
                 return f(*args, **kwargs)
-        except Exception:
+        except Exception as e:
+            print(f"[AUTH] Session auth check failed: {e}")
             pass
-        if not ADMIN_TOKEN:
-            return abort(401, 'Unauthorized')
-        token = check_token_from_request(request)
-        if not token or token != ADMIN_TOKEN:
-            return abort(401, 'Unauthorized')
-        return f(*args, **kwargs)
+        
+        # Fall back to token-based auth if ADMIN_TOKEN is configured
+        if ADMIN_TOKEN:
+            token = check_token_from_request(request)
+            if token and token == ADMIN_TOKEN:
+                print("[AUTH] User authenticated via ADMIN_TOKEN")
+                return f(*args, **kwargs)
+        
+        # Neither session nor token auth succeeded
+        print(f"[AUTH] Authentication failed. current_user.is_authenticated: {getattr(current_user, 'is_authenticated', False) if current_user else 'N/A'}")
+        return abort(401, 'Unauthorized')
     wrapper.__name__ = f.__name__
     return wrapper
 
@@ -73,7 +80,13 @@ def require_auth(f):
 app = Flask(__name__)
 
 # Secret key for sessions
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret')
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production'))
+
+# Session cookie configuration
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
 
 # Initialize DB at import time so the database/tables exist before serving
 init_db()
@@ -271,7 +284,7 @@ def _scheduled_poll_results_capture(force=False):
         run_all_polls(db_session=db)
         
         # Update last_run timestamp
-        config.last_run = datetime.datetime.utcnow()
+        config.last_run = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         db.commit()
         print("[Poll Results Scheduler] Completed")
     except Exception as e:
@@ -589,8 +602,10 @@ def login():
     try:
         u = db.query(User).filter(User.username == username).first()
         if not u or not u.check_password(password):
+            print(f"[LOGIN] Failed login attempt for user: {username}")
             return abort(401, 'invalid credentials')
         login_user(u)
+        print(f"[LOGIN] User {username} logged in successfully. Session ID: {request.cookies.get('session', 'NO SESSION COOKIE')}")
         return jsonify({'ok': True})
     finally:
         db.close()
@@ -621,6 +636,86 @@ def create_poll():
     db.refresh(p)
     db.close()
     return jsonify({'id': p.id, 'entryname': p.entryname, 'pollid': p.pollid, 'answerid': p.answerid})
+
+
+@app.route('/settings/presets', methods=['POST'])
+@require_auth
+def apply_preset():
+    from app.models import SystemSetting, PollSchedulerConfig
+    data = request.json or {}
+    preset = data.get('preset')
+    
+    if preset not in ['tiger', 'lazy']:
+        return abort(400, 'Invalid preset. Must be "tiger" or "lazy"')
+        
+    db = SessionLocal()
+    try:
+        # Tiger Mode: Scheduler 60s, Poll Results 15m
+        # Lazy Mode: Scheduler 3600s (60m), Poll Results 60m
+        
+        sched_interval = 60 if preset == 'tiger' else 3600
+        poll_interval = 15 if preset == 'tiger' else 60
+        
+        # 1. Update Scheduler Interval (SystemSetting)
+        setting_sched = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_interval').first()
+        if not setting_sched:
+            setting_sched = SystemSetting(key='scheduler_interval')
+            db.add(setting_sched)
+        
+        # Check if changed to reschedule
+        old_sched_val = int(setting_sched.value) if setting_sched.value else 0
+        setting_sched.value = str(sched_interval)
+        
+        # 2. Update Poll Results Interval (PollSchedulerConfig)
+        poll_config = db.query(PollSchedulerConfig).first()
+        if not poll_config:
+            poll_config = PollSchedulerConfig()
+            db.add(poll_config)
+        poll_config.interval_minutes = poll_interval
+        
+        db.commit()
+        
+        # Reschedule main scheduler if needed
+        if old_sched_val != sched_interval:
+            print(f"[SCHEDULER] Rescheduling job with new interval: {sched_interval}s")
+            scheduler.add_job(_scheduled_pick_and_start, 'interval', seconds=sched_interval, id='poll_queue_runner', replace_existing=True)
+            
+        # Update poll scheduler job
+        _update_poll_scheduler_job()
+        
+        return jsonify({
+            'success': True,
+            'preset': preset,
+            'scheduler_interval': sched_interval,
+            'poll_interval': poll_interval
+        })
+    finally:
+        db.close()
+
+
+@app.route('/settings/auto-switch', methods=['GET', 'POST'])
+@require_auth
+def auto_switch_settings():
+    from app.models import SystemSetting
+    db = SessionLocal()
+    try:
+        if request.method == 'POST':
+            data = request.json or {}
+            enabled = bool(data.get('enabled', False))
+            
+            setting = db.query(SystemSetting).filter(SystemSetting.key == 'auto_switch_to_lazy').first()
+            if not setting:
+                setting = SystemSetting(key='auto_switch_to_lazy')
+                db.add(setting)
+            setting.value = 'true' if enabled else 'false'
+            db.commit()
+            return jsonify({'enabled': enabled})
+        else:
+            setting = db.query(SystemSetting).filter(SystemSetting.key == 'auto_switch_to_lazy').first()
+            enabled = setting.value == 'true' if setting else False
+            return jsonify({'enabled': enabled})
+    finally:
+        db.close()
 
 
 @app.route('/polls', methods=['GET'])
@@ -705,7 +800,7 @@ def refresh_poll_results(poll_id):
             return abort(404, 'poll not found')
         
         url = f"https://poll.fm/{p.pollid}/results"
-        extract_poll_results(url, p.pollid)
+        extract_poll_results(url, p.pollid, force=True)
         
         # Refresh from DB to get updated stats
         db.refresh(p)
@@ -879,8 +974,8 @@ def cancel_queue_item(item_id):
             # attempt to stop
             stop_queue_item(item_id)
         else:
-            it.status = QueueStatus.canceled
-            it.completed_at = datetime.datetime.utcnow()
+            from datetime import datetime, timezone
+            it.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.commit()
         socketio.emit('queue_update', {'type': 'cancel', 'item_id': item_id})
         return jsonify({'canceled': True})

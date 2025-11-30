@@ -22,12 +22,14 @@ function formatESTTime(isoString) {
 }
 
 async function fetchPolls() {
-  const res = await authedFetch('/polls');
+  // Add timestamp to prevent caching
+  const res = await authedFetch(`/polls?_t=${Date.now()}`);
   return res.json();
 }
 
 async function fetchQueue() {
-  const res = await authedFetch('/queue');
+  // Add timestamp to prevent caching
+  const res = await authedFetch(`/queue?_t=${Date.now()}`);
   return res.json();
 }
 
@@ -762,11 +764,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Logout
+const btnLogout = document.getElementById('btnLogout');
+if (btnLogout) {
+  btnLogout.addEventListener('click', async () => {
+    try {
+      await authedFetch('/logout', { method: 'POST' });
+      window.location.reload();
+    } catch (err) {
+      showToast('Logout failed: ' + err.message, 'danger');
+    }
+  });
+}
+
 // Login modal behavior
-document.getElementById('btnLogin').addEventListener('click', () => {
-  loginModalShown = false;
-  showLoginModal();
-});
+const btnLogin = document.getElementById('btnLogin');
+if (btnLogin) {
+  btnLogin.addEventListener('click', () => {
+    loginModalShown = false;
+    showLoginModal();
+  });
+}
 
 document.getElementById('saveCredentials').addEventListener('click', async () => {
   const username = document.getElementById('loginUsername').value.trim();
@@ -782,7 +800,9 @@ document.getElementById('saveCredentials').addEventListener('click', async () =>
       // clear inputs and refresh data
       document.getElementById('loginUsername').value = '';
       document.getElementById('loginPassword').value = '';
-      refreshPolls();
+
+      // Reload to update UI (show logout button)
+      window.location.reload();
       refreshQueue();
       refreshWorkers();
     } else {
@@ -1103,6 +1123,61 @@ if (btnSaveVotingSettings) {
   });
 }
 
+// Presets
+const btnPresetTiger = document.getElementById('btnPresetTiger');
+if (btnPresetTiger) {
+  btnPresetTiger.addEventListener('click', () => applyPreset('tiger'));
+}
+
+const btnPresetLazy = document.getElementById('btnPresetLazy');
+if (btnPresetLazy) {
+  btnPresetLazy.addEventListener('click', () => applyPreset('lazy'));
+}
+
+async function applyPreset(preset) {
+  try {
+    const res = await authedFetch('/settings/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preset })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`Applied ${preset === 'tiger' ? 'Tiger 🐯' : 'Lazy 🦥'} Mode`, 'success');
+      // Update UI fields
+      const schedInput = document.getElementById('settingSchedulerInterval');
+      if (schedInput) schedInput.value = data.scheduler_interval;
+
+      const pollInput = document.getElementById('pollSchedulerIntervalInput');
+      if (pollInput) pollInput.value = data.poll_interval;
+
+      // Refresh status badges
+      refreshPollSchedulerStatus();
+    }
+  } catch (e) {
+    showToast('Failed to apply preset: ' + e.message, 'danger');
+  }
+}
+
+// Auto-Switch
+const settingAutoSwitch = document.getElementById('settingAutoSwitch');
+if (settingAutoSwitch) {
+  settingAutoSwitch.addEventListener('change', async () => {
+    try {
+      const enabled = settingAutoSwitch.checked;
+      await authedFetch('/settings/auto-switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      showToast(`Auto-switch ${enabled ? 'enabled' : 'disabled'}`, 'success');
+    } catch (e) {
+      showToast('Failed to update auto-switch: ' + e.message, 'danger');
+      settingAutoSwitch.checked = !settingAutoSwitch.checked; // Revert
+    }
+  });
+}
+
 // Load settings when settings section is shown
 async function loadAllSettings() {
   try {
@@ -1121,6 +1196,13 @@ async function loadAllSettings() {
     document.getElementById('settingCooldown').value = votingData.cooldown || 92;
     document.getElementById('settingCntToPause').value = votingData.cnt_to_pause || 1;
     document.getElementById('settingLongPause').value = votingData.long_pause_seconds || 90;
+
+    // Load Auto-Switch
+    const autoSwitchRes = await authedFetch('/settings/auto-switch');
+    const autoSwitchData = await autoSwitchRes.json();
+    const switchEl = document.getElementById('settingAutoSwitch');
+    if (switchEl) switchEl.checked = autoSwitchData.enabled;
+
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
@@ -1139,9 +1221,13 @@ document.querySelectorAll('[data-section="settings"]').forEach(btn => {
 });
 
 // Initialize tooltips on page load
+// Initialize tooltips and settings on page load
 document.addEventListener('DOMContentLoaded', () => {
   const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
   const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+  // Load saved settings (including auto-switch toggle)
+  loadAllSettings();
 });
 
 async function showPollSnapshot(pollId) {

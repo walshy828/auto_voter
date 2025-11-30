@@ -7,6 +7,14 @@ from .db import Base
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
+def utcnow():
+    """
+    Return current UTC time as a naive datetime object.
+    This replaces datetime.utcnow() which is deprecated.
+    """
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 class QueueStatus(str, enum.Enum):
     queued = 'queued'
     running = 'running'
@@ -21,7 +29,7 @@ class Poll(Base):
     pollid = Column(String(64), nullable=False)
     answerid = Column(String(64), nullable=False)
     use_tor = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     
     # Poll metadata
     status = Column(String(20), default='active')  # 'active' or 'closed'
@@ -39,7 +47,7 @@ class PollResult(Base):
     __tablename__ = 'poll_results'
     id = Column(Integer, primary_key=True, index=True)
     poll_id = Column(Integer, ForeignKey('polls.id'), nullable=False)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
     answer_text = Column(String(255), nullable=False)
     votes = Column(Integer, default=0)
     percent = Column(String(10), nullable=True)
@@ -50,7 +58,7 @@ class PollVote(Base):
     id = Column(Integer, primary_key=True, index=True)
     poll_id = Column(Integer, ForeignKey('polls.id'), nullable=True) # Nullable in case poll deleted or not linked
     pollid = Column(String(64), nullable=False) # Store raw pollid too for redundancy/unlinked
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
     answerid = Column(String(64), nullable=False)
     status = Column(String(20), nullable=False) # 'success' or 'fail'
     worker_id = Column(Integer, nullable=True)
@@ -66,7 +74,7 @@ class PollSnapshot(Base):
     votes = Column(Integer, default=0)
     place = Column(Integer, nullable=True)  # Ranking position
     percent = Column(String(10), nullable=True)  # Percentage string
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow)
 
 
 class QueueItem(Base):
@@ -89,7 +97,7 @@ class QueueItem(Base):
     exit_code = Column(Integer, nullable=True)
     # Link to worker metadata (if created)
     worker_id = Column(Integer, ForeignKey('worker_processes.id'), nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     result_msg = Column(Text, nullable=True)
@@ -110,7 +118,7 @@ class WorkerProcess(Base):
     pid = Column(Integer, nullable=True)
     item_id = Column(Integer, nullable=False)
     log_path = Column(String(1024), nullable=True)
-    start_time = Column(DateTime, default=datetime.datetime.utcnow)
+    start_time = Column(DateTime, default=utcnow)
     end_time = Column(DateTime, nullable=True)
     exit_code = Column(Integer, nullable=True)
     result_msg = Column(Text, nullable=True)

@@ -26,6 +26,38 @@ flask run --host=0.0.0.0 --port=8080
 
 Open http://localhost:8080/ to use the admin UI.
 
+## Environment Variables
+
+Create a `.env` file in the root directory to configure the application. See `.env.example` for a template.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| **General** | | |
+| `FLASK_ENV` | `production` | Flask environment (development/production) |
+| `FLASK_SECRET_KEY` | `dev-secret...` | Secret key for Flask sessions |
+| `DEBUG_MODE` | `false` | Enable verbose debug logging |
+| **Authentication** | | |
+| `ADMIN_USER` | `admin` | Username for admin access |
+| `ADMIN_PASS` | `test` | Password for admin access |
+| `ADMIN_TOKEN` | - | Optional token for API authentication |
+| **Database & Storage** | | |
+| `AUTO_VOTER_DB` | `sqlite:///./data/auto_voter.db` | Database connection string |
+| `AUTO_VOTER_LOG_DIR` | `./data/logs` | Directory for worker logs |
+| **InfluxDB (Optional)** | | |
+| `INFLUX_URL` | - | InfluxDB URL |
+| `INFLUX_TOKEN` | - | InfluxDB Token |
+| `INFLUX_ORG` | - | InfluxDB Organization |
+| `INFLUX_BUCKET` | - | InfluxDB Bucket |
+| **Tor Configuration** | | |
+| `TOR_SOCKS_PORT` | `9050` | Tor SOCKS proxy port |
+| `TOR_CONTROL_PORT` | `9051` | Tor control port |
+| `TOR_PASSWORD` | `welcomeTomyPa55word` | Tor control password |
+| **Scheduler** | | |
+| `AUTO_VOTER_SCHEDULE_INTERVAL` | `30` | Interval (seconds) for the standalone scheduler service |
+| `SCHEDULER_INTERVAL` | `30` | Interval (seconds) for the internal app scheduler |
+| **VPN** | | |
+| `EXPRESSVPN_ACTIVATION_CODE` | - | Activation code for ExpressVPN |
+
 Scheduler behavior
 
 - The app includes a BackgroundScheduler (APScheduler) that periodically (every 30s) picks the next queued item and starts it.

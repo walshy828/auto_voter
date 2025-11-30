@@ -16,10 +16,20 @@
     <div class="container-fluid">
       <span class="navbar-brand mb-0 h1">Auto Voter</span>
       <div class="d-flex align-items-center">
-        <button id="refreshAll" class="btn btn-link text-secondary me-2 p-0" style="font-size: 1.5rem;">
+        <button id="refreshAll" class="btn btn-link text-secondary me-2 p-0" style="font-size: 1.5rem;"
+          title="Refresh All Data">
           <i class="bi bi-arrow-clockwise"></i>
         </button>
+        {% if current_user.is_authenticated %}
+        <div class="d-flex align-items-center gap-2">
+          <span class="text-muted small d-none d-sm-inline">
+            <i class="bi bi-person-circle"></i> {{ current_user.username }}
+          </span>
+          <button id="btnLogout" class="btn btn-outline-secondary btn-sm">Logout</button>
+        </div>
+        {% else %}
         <button id="btnLogin" class="btn btn-outline-primary btn-sm">Login</button>
+        {% endif %}
       </div>
     </div>
   </nav>
@@ -152,6 +162,32 @@
           </h2>
           <div id="collapseSystem" class="accordion-collapse collapse show" data-bs-parent="#settingsAccordion">
             <div class="accordion-body">
+
+              <!-- Configuration Presets -->
+              <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                  <h6 class="card-title">Presets & Automation</h6>
+                  <p class="card-text small text-muted">Quickly apply configuration modes.</p>
+
+                  <div class="d-flex gap-2 mb-3">
+                    <button class="btn btn-outline-warning flex-grow-1" id="btnPresetTiger">
+                      🐯 Tiger Mode
+                    </button>
+                    <button class="btn btn-outline-info flex-grow-1" id="btnPresetLazy">
+                      🦥 Lazy Mode
+                    </button>
+                  </div>
+
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="settingAutoSwitch">
+                    <label class="form-check-label small" for="settingAutoSwitch">
+                      Auto-switch to Lazy Mode when idle
+                      <i class="bi bi-question-circle-fill text-muted" data-bs-toggle="tooltip"
+                        title="Automatically switches to Lazy Mode (60m intervals) when there are no active polls or queued items."></i>
+                    </label>
+                  </div>
+                </div>
+              </div>
 
               <!-- Worker Scheduler -->
               <div class="card shadow-sm mb-3">
