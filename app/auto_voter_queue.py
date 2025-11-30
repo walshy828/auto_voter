@@ -239,6 +239,52 @@ def update_queue_progress(item_id, votes_cast, votes_success, status):
         if DEBUG_MODE:
             print(f"[DEBUG] Failed to update progress: {e}")
 
+def connect_vpn():
+    """Connect to ExpressVPN if not already connected."""
+    try:
+        import subprocess
+        # Check if already connected
+        result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=5)
+        if 'Connected' in result.stdout:
+            print("[VPN] Already connected")
+            return True
+        
+        # Connect to smart location
+        print("[VPN] Connecting to ExpressVPN...")
+        result = subprocess.run(['expressvpn', 'connect', 'smart'], capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            print("[VPN] Connected successfully")
+            return True
+        else:
+            print(f"[VPN] Connection failed: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"[VPN] Error connecting: {e}")
+        return False
+
+def disconnect_vpn():
+    """Disconnect from ExpressVPN."""
+    try:
+        import subprocess
+        # Check if connected
+        result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=5)
+        if 'Not connected' in result.stdout:
+            print("[VPN] Already disconnected")
+            return True
+        
+        # Disconnect
+        print("[VPN] Disconnecting from ExpressVPN...")
+        result = subprocess.run(['expressvpn', 'disconnect'], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            print("[VPN] Disconnected successfully")
+            return True
+        else:
+            print(f"[VPN] Disconnection failed: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"[VPN] Error disconnecting: {e}")
+        return False
+
 def vote_start(start_mode):
     """
     Start the voting process.
@@ -254,6 +300,14 @@ def vote_start(start_mode):
     try:
         print(f"[vote_start] Starting with mode={start_mode}")
         global RunPerScript, cntToRun
+        
+        # Connect to VPN if needed (use_vpn=True and use_tor=False)
+        vpn_connected = False
+        if use_vpn and not use_tor:
+            print("[vote_start] VPN enabled for this job, connecting...")
+            vpn_connected = connect_vpn()
+            if not vpn_connected:
+                print("[vote_start] WARNING: VPN connection failed, continuing anyway...")
         
         # Recalculate RunPerScript based on current globals
         # This is critical because worker.py sets start_totalToRun/num_threads but might not update RunPerScript
@@ -395,6 +449,11 @@ def vote_start(start_mode):
         import traceback
         traceback.print_exc()
         raise
+    finally:
+        # Disconnect VPN if we connected it
+        if use_vpn and not use_tor and vpn_connected:
+            print("[vote_start] Job complete, disconnecting VPN...")
+            disconnect_vpn()
 
 def print_debug(msg, levelofdetail=2):
 
