@@ -16,6 +16,7 @@ print("[Scheduler Service] Database initialized")
 
 def pick_and_start():
     """Pick and start queued voting items."""
+    print("[Scheduler Service] pick_and_start() called")
     db = SessionLocal()
     try:
         # Check if workers are paused
@@ -23,14 +24,26 @@ def pick_and_start():
         paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
         if paused_setting and paused_setting.value == 'true':
             # Workers are paused, skip processing
+            print("[Scheduler Service] Workers are paused, skipping queue processing")
             return
         
+        print("[Scheduler Service] Checking for queued items...")
         it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
         if it:
+            print(f"[Scheduler Service] Found queued item {it.id}, attempting to start...")
             try:
                 start_queue_item_background(it.id)
+                print(f"[Scheduler Service] Successfully started item {it.id}")
             except Exception as e:
-                print(f"Failed to start queued item {it.id}: {e}")
+                print(f"[Scheduler Service] Failed to start queued item {it.id}: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print("[Scheduler Service] No queued items found")
+    except Exception as e:
+        print(f"[Scheduler Service] Error in pick_and_start: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         db.close()
 
@@ -162,30 +175,45 @@ def check_auto_switch_to_lazy(scheduler):
 
 def main():
     global current_queue_interval
-    current_queue_interval = int(os.environ.get('AUTO_VOTER_SCHEDULE_INTERVAL', '30'))
-    
-    sched = BlockingScheduler()
-    
-    # Add queue item scheduler
-    sched.add_job(pick_and_start, 'interval', seconds=current_queue_interval, id='queue_runner')
-    print(f"Queue scheduler started, interval={current_queue_interval}s")
-    
-    # Add poll results scheduler (checks config for interval)
-    # Run every minute and let the function check if it should actually run
-    sched.add_job(run_poll_results_scheduler, 'interval', minutes=1, id='poll_results_runner')
-    print(f"Poll results scheduler started, checks every 1 minute")
-    
-    # Add config manager (checks every 30s)
-    sched.add_job(manage_scheduler_config, 'interval', seconds=30, args=[sched], id='config_manager')
-    
-    # Add auto-switch checker (checks every 5 minutes)
-    sched.add_job(check_auto_switch_to_lazy, 'interval', minutes=5, args=[sched], id='auto_switch_checker')
+    print("[Scheduler Service] Starting main()...")
     
     try:
+        current_queue_interval = int(os.environ.get('AUTO_VOTER_SCHEDULE_INTERVAL', '30'))
+        print(f"[Scheduler Service] Interval set to {current_queue_interval}s")
+        
+        sched = BlockingScheduler()
+        print("[Scheduler Service] BlockingScheduler created")
+        
+        # Add queue item scheduler
+        sched.add_job(pick_and_start, 'interval', seconds=current_queue_interval, id='queue_runner')
+        print(f"[Scheduler Service] Queue scheduler started, interval={current_queue_interval}s")
+        
+        # Add poll results scheduler (checks config for interval)
+        # Run every minute and let the function check if it should actually run
+        sched.add_job(run_poll_results_scheduler, 'interval', minutes=1, id='poll_results_runner')
+        print(f"[Scheduler Service] Poll results scheduler started, checks every 1 minute")
+        
+        # Add config manager (checks every 30s)
+        sched.add_job(manage_scheduler_config, 'interval', seconds=30, args=[sched], id='config_manager')
+        print("[Scheduler Service] Config manager added")
+        
+        # Add auto-switch checker (checks every 5 minutes)
+        sched.add_job(check_auto_switch_to_lazy, 'interval', minutes=5, args=[sched], id='auto_switch_checker')
+        print("[Scheduler Service] Auto-switch checker added")
+        
+        print("[Scheduler Service] Starting scheduler loop...")
         sched.start()
     except (KeyboardInterrupt, SystemExit):
+        print("[Scheduler Service] Received shutdown signal")
         pass
+    except Exception as e:
+        print(f"[Scheduler Service] FATAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 if __name__ == '__main__':
+    print("[Scheduler Service] __main__ block executing...")
     main()
+

@@ -49,7 +49,7 @@ services:
     devices:
       - /dev/net/tun
     environment:
-      - AUTO_VOTER_SCHEDULE_INTERVAL=${AUTO_VOTER_SCHEDULE_INTERVAL:-10}
+      - AUTO_VOTER_SCHEDULE_INTERVAL=${AUTO_VOTER_SCHEDULE_INTERVAL:-60}
       - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
       - AUTO_VOTER_DB=sqlite:///./data/auto_voter.db
       - AUTO_VOTER_LOG_DIR=./data/logs
