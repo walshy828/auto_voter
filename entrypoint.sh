@@ -56,6 +56,44 @@ else
     echo "WARNING: Could not determine default gateway, skipping route configuration"
 fi
 
+# Start Tor service if TOR_PASSWORD is set
+if [ -n "$TOR_PASSWORD" ]; then
+    echo "Configuring and starting Tor..."
+    
+    # Generate hashed password for Tor
+    HASHED_PASSWORD=$(tor --hash-password "$TOR_PASSWORD" 2>/dev/null | tail -n 1)
+    
+    # Create torrc configuration
+    cat > /etc/tor/torrc <<EOF
+# Tor configuration for auto_voter
+SocksPort ${TOR_SOCKS_PORT:-9050}
+ControlPort ${TOR_CONTROL_PORT:-9051}
+HashedControlPassword $HASHED_PASSWORD
+CookieAuthentication 0
+DataDirectory /var/lib/tor
+Log notice file /var/log/tor/notices.log
+EOF
+    
+    # Create log directory
+    mkdir -p /var/log/tor
+    chown -R debian-tor:debian-tor /var/log/tor /var/lib/tor 2>/dev/null || true
+    
+    # Start Tor service in background
+    tor -f /etc/tor/torrc > /var/log/tor/tor.log 2>&1 &
+    
+    # Wait for Tor to be ready
+    echo "Waiting for Tor to start..."
+    for i in {1..10}; do
+        if netstat -tuln 2>/dev/null | grep -q ":${TOR_SOCKS_PORT:-9050}"; then
+            echo "✓ Tor started successfully on port ${TOR_SOCKS_PORT:-9050}"
+            break
+        fi
+        sleep 1
+    done
+else
+    echo "TOR_PASSWORD not set, skipping Tor configuration"
+fi
+
 echo "Starting application with command: $@"
 "$@"
 EXIT_CODE=$?
