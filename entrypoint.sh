@@ -83,13 +83,26 @@ EOF
     
     # Wait for Tor to be ready
     echo "Waiting for Tor to start..."
-    for i in {1..10}; do
-        if netstat -tuln 2>/dev/null | grep -q ":${TOR_SOCKS_PORT:-9050}"; then
+    TOR_STARTED=false
+    for i in {1..15}; do
+        if ss -tuln 2>/dev/null | grep -q ":${TOR_SOCKS_PORT:-9050}"; then
             echo "✓ Tor started successfully on port ${TOR_SOCKS_PORT:-9050}"
+            TOR_STARTED=true
             break
         fi
         sleep 1
     done
+
+    if [ "$TOR_STARTED" = false ]; then
+        echo "ERROR: Tor failed to start on port ${TOR_SOCKS_PORT:-9050}"
+        if [ -f /var/log/tor/tor.log ]; then
+            echo "--- Tor Log Tail ---"
+            tail -n 20 /var/log/tor/tor.log
+            echo "--------------------"
+        else
+            echo "No Tor log file found at /var/log/tor/tor.log"
+        fi
+    fi
 else
     echo "TOR_PASSWORD not set, skipping Tor configuration"
 fi
