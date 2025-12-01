@@ -368,16 +368,34 @@ function renderQueueItemContent(it) {
   // Poll results link
   const pollLink = `<a href="https://poll.fm/${it.pollid}/results" target="_blank" class="text-decoration-none">${escapeHtml(it.pollid)}</a>`;
 
-  // Progress bar
+  // Progress display - redesigned for better visibility
   const votesCast = it.votes_cast || 0;
   const votesTotal = it.votes || 1;
   const progress = Math.round((votesCast / votesTotal) * 100);
+
+  // Determine progress bar color based on status and progress
+  let progressBarClass = 'bg-primary';
+  if (it.status === 'completed') {
+    progressBarClass = 'bg-success';
+  } else if (it.status === 'canceled') {
+    progressBarClass = 'bg-danger';
+  } else if (it.status === 'paused') {
+    progressBarClass = 'bg-warning';
+  }
+
   const progressBar = `
-    <div class="progress" style="height: 20px;">
-      <div class="progress-bar ${it.status === 'running' ? 'progress-bar-striped progress-bar-animated' : ''}" 
-           role="progressbar" style="width: ${progress}%" 
-           aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
-        ${votesCast}/${votesTotal}
+    <div class="d-flex align-items-center gap-2">
+      <div class="progress flex-grow-1" style="height: 24px; min-width: 100px;">
+        <div class="progress-bar ${progressBarClass} ${it.status === 'running' ? 'progress-bar-striped progress-bar-animated' : ''}" 
+             role="progressbar" style="width: ${progress}%" 
+             aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
+        </div>
+      </div>
+      <div class="text-nowrap small fw-bold" style="min-width: 80px;">
+        <span class="text-primary">${votesCast.toLocaleString()}</span>
+        <span class="text-muted">/</span>
+        <span class="text-dark">${votesTotal.toLocaleString()}</span>
+        <div class="text-muted" style="font-size: 0.75rem;">${progress}%</div>
       </div>
     </div>
   `;
@@ -426,7 +444,7 @@ function renderQueueItemContent(it) {
     <td class="d-none d-md-table-cell">${it.id}</td>
     <td class="d-none d-md-table-cell">${escapeHtml(it.queue_name || '-')}</td>
     <td class="d-none d-md-table-cell">${pollLink} / ${escapeHtml(it.answerid)}</td>
-    <td class="d-none d-md-table-cell" style="width: 15%">${progressBar}</td>
+    <td class="d-none d-md-table-cell" style="min-width: 200px">${progressBar}</td>
     <td class="d-none d-md-table-cell">${successBadge}</td>
     <td class="d-none d-md-table-cell small">${startTime}</td>
     <td class="d-none d-md-table-cell small">${endTime}</td>
