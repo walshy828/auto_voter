@@ -73,6 +73,8 @@ CookieAuthentication 0
 DataDirectory /var/lib/tor
 Log info file /var/log/tor/notices.log
 ClientOnly 1
+FascistFirewall 1
+ReachableAddresses *:80,*:443
 EOF
     
     # Create log directory
