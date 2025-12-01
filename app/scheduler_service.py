@@ -224,9 +224,45 @@ def check_and_disconnect_idle_vpn():
         db.close()
 
 
+def reset_zombie_jobs():
+    """
+    Reset any jobs that are stuck in 'running' or 'paused' state on startup.
+    Since the scheduler is just starting, any such jobs are zombies from a previous run
+    that was interrupted (e.g. container restart).
+    """
+    print("[Scheduler Service] Checking for zombie jobs...")
+    db = SessionLocal()
+    try:
+        zombies = db.query(QueueItem).filter(
+            QueueItem.status.in_([QueueStatus.running, QueueStatus.paused])
+        ).all()
+        
+        if zombies:
+            print(f"[Scheduler Service] Found {len(zombies)} zombie jobs. Resetting to queued...")
+            for item in zombies:
+                print(f"[Scheduler Service] Resetting job {item.id} (was {item.status})")
+                item.status = QueueStatus.queued
+                item.current_status = "Recovered from restart - queued to run"
+                # Note: We don't reset votes_cast, so it will continue adding to the total.
+                # If the user wants to start fresh, they can cancel and add a new item.
+            db.commit()
+            print("[Scheduler Service] Zombie jobs reset successfully")
+        else:
+            print("[Scheduler Service] No zombie jobs found")
+    except Exception as e:
+        print(f"[Scheduler Service] Error resetting zombie jobs: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
+
+
 def main():
     global current_queue_interval
     print("[Scheduler Service] Starting main()...")
+    
+    # Reset zombie jobs on startup
+    reset_zombie_jobs()
     
     try:
         current_queue_interval = int(os.environ.get('AUTO_VOTER_SCHEDULE_INTERVAL', '30'))
