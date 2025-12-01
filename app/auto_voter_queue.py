@@ -477,7 +477,6 @@ def vote_start(start_mode):
                     time.sleep(70)
                 elif p2_pause < 120:
                     if DEBUG_MODE:
-                    if DEBUG_MODE:
                         print("[DEBUG] Low success rate, sleeping 300s")
                     # Disconnect during long sleep to save CPU
                     if use_vpn and not use_tor:
