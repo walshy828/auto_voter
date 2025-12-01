@@ -78,6 +78,9 @@ ClientOnly 1
 UseBridges 1
 ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy
 
+# Disable any proxy usage - connect directly
+Socks5Proxy ""
+
 # Public obfs4 bridges (from https://bridges.torproject.org)
 Bridge obfs4 193.11.166.194:27015 2D82C2E354D531A68469ADF7F878FA6060C6BACA cert=4TLQPJrTSaDffMK7Nbao6LC7G9OW/NHkUwIdjLSS3KYf0Nv4/nQiiI8dY2TcsQx01NniOg iat-mode=0
 Bridge obfs4 193.11.166.194:27020 86AC7B8D430DAC4117E9F42C9EAED18133863AAF cert=0LDeJH4JzMDtkJJrFphJCiPqKx7loozKN7VNfuukMGfHO0Z8OGdzHVkhVAOfo1mUdv9cMg iat-mode=0
