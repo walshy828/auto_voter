@@ -63,7 +63,7 @@ if [ -n "$TOR_PASSWORD" ]; then
     # Generate hashed password for Tor
     HASHED_PASSWORD=$(tor --hash-password "$TOR_PASSWORD" 2>/dev/null | tail -n 1)
     
-    # Create torrc configuration
+    # Create torrc configuration with bridges for better connectivity
     cat > /etc/tor/torrc <<EOF
 # Tor configuration for auto_voter
 SocksPort ${TOR_SOCKS_PORT:-9050}
@@ -73,6 +73,18 @@ CookieAuthentication 0
 DataDirectory /var/lib/tor
 Log info file /var/log/tor/notices.log
 ClientOnly 1
+
+# Use bridges to bypass blocking
+UseBridges 1
+ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy
+
+# Public obfs4 bridges (from https://bridges.torproject.org)
+Bridge obfs4 193.11.166.194:27015 2D82C2E354D531A68469ADF7F878FA6060C6BACA cert=4TLQPJrTSaDffMK7Nbao6LC7G9OW/NHkUwIdjLSS3KYf0Nv4/nQiiI8dY2TcsQx01NniOg iat-mode=0
+Bridge obfs4 193.11.166.194:27020 86AC7B8D430DAC4117E9F42C9EAED18133863AAF cert=0LDeJH4JzMDtkJJrFphJCiPqKx7loozKN7VNfuukMGfHO0Z8OGdzHVkhVAOfo1mUdv9cMg iat-mode=0
+Bridge obfs4 193.11.166.194:27025 1AE2C08904527FEA90C4C4F8C1083EA59FBC6FAF cert=ItvYZzW5tn6v3G4UnQa6Qz04Npro6e81AP70YujmK/KXwDFPTs3aHXcHp4n8Vt6w/bv8cA iat-mode=0
+Bridge obfs4 38.229.1.78:80 C8CBDB2464FC9804A69531437BCF2BE31FDD2EE4 cert=Hmyfd2ev46gGY7NoVxA9ngrPF2zCZtzskRTzoWXbxNkzeVnGFPWmrTtILRyqCTjHR+s9dg iat-mode=2
+
+# Firewall settings
 FascistFirewall 1
 ReachableAddresses *:80,*:443
 EOF

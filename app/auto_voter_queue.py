@@ -468,11 +468,12 @@ def vote_start(start_mode):
             print("[vote_start] Checking Tor status...")
             # Check bootstrap status
             if not check_tor_bootstrap():
-                print("[vote_start] Waiting for Tor to bootstrap...")
-                # Wait up to 60 seconds for bootstrap
-                for _ in range(12):
+                print("[vote_start] Waiting for Tor to bootstrap (this may take up to 2 minutes)...")
+                # Wait up to 120 seconds for bootstrap (bridges can be slow)
+                for i in range(24):
                     time.sleep(5)
                     if check_tor_bootstrap():
+                        print(f"[vote_start] ✓ Tor bootstrapped successfully after {(i+1)*5} seconds")
                         break
                 else:
                     print("[vote_start] WARNING: Tor failed to bootstrap in time. Connection errors likely.")
