@@ -41,10 +41,10 @@ if [ -n "$GW" ]; then
     echo "Default gateway found: $GW"
     # Helper function to add route if not exists
     add_route() {
+        # Check if route exists to avoid error
         if ! ip route show | grep -q "$1"; then
-            ip route add "$1" via "$GW" dev eth0 && echo "Added route for $1" || echo "Failed to add route for $1"
-        else
-            echo "Route for $1 already exists"
+            # Try to add route, suppress stderr to avoid log spam
+            ip route add "$1" via "$GW" dev eth0 >/dev/null 2>&1 || true
         fi
     }
     
@@ -56,5 +56,5 @@ else
     echo "WARNING: Could not determine default gateway, skipping route configuration"
 fi
 
-echo "Starting application..."
+echo "Starting application with command: $@"
 exec "$@"
