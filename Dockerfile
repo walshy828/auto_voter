@@ -11,8 +11,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     expect \
     iproute2 \
     procps \
-    tor \
-    obfs4proxy \
     && rm -rf /var/lib/apt/lists/*
 
 # Install ExpressVPN

@@ -368,63 +368,6 @@ def disconnect_vpn():
         print(f"[VPN] Error disconnecting: {e}")
         return False
 
-def check_tor_bootstrap():
-    """Check if Tor is fully bootstrapped via the Control Port."""
-    if not use_tor:
-        return True
-        
-    try:
-        print(f"[Tor Check] Connecting to Control Port {TOR_CONTROL_PORT}...")
-        with Controller.from_port(port=TOR_CONTROL_PORT) as controller:
-            controller.authenticate(password=TOR_PASSWORD)
-            status = controller.get_info("status/bootstrap-phase")
-            print(f"[Tor Check] Bootstrap status: {status}")
-            
-            if "TAG=done" in status:
-                print("[Tor Check] ✓ Tor is fully bootstrapped")
-                return True
-            else:
-                print("[Tor Check] ✗ Tor is NOT fully bootstrapped yet")
-                # Print logs to help debug
-                print("--- Tor Notices Log ---")
-                try:
-                    with open('/var/log/tor/notices.log', 'r') as f:
-                        print(f.read())
-                except Exception as e:
-                    print(f"Could not read notices.log: {e}")
-                
-                print("--- Tor Stdout Log ---")
-                try:
-                    with open('/var/log/tor/tor.log', 'r') as f:
-                        print(f.read())
-                except Exception as e:
-                    print(f"Could not read tor.log: {e}")
-                print("-----------------------")
-                return False
-    except Exception as e:
-        print(f"[Tor Check] Error checking bootstrap status: {e}")
-        return False
-
-def test_tor_connectivity():
-    """Test if we can reach the internet via Tor."""
-    if not use_tor:
-        return True
-        
-    try:
-        print("[Tor Check] Testing connectivity via Tor (https://check.torproject.org/api/ip)...")
-        session = requests.Session()
-        session.proxies.update(proxies)
-        # Use a shorter timeout for the test
-        resp = session.get("https://check.torproject.org/api/ip", timeout=20)
-        if resp.status_code == 200:
-            print(f"[Tor Check] ✓ Connectivity success! Response: {resp.text.strip()}")
-            return True
-        else:
-            print(f"[Tor Check] ✗ Connectivity failed with status code: {resp.status_code}")
-            return False
-    except Exception as e:
-        print(f"[Tor Check] ✗ Connectivity failed: {e}")
-        return False
 def vote_start(start_mode):
     """
     Start the voting process.
@@ -441,20 +384,13 @@ def vote_start(start_mode):
         print(f"[vote_start] Starting with mode={start_mode}")
         global RunPerScript, cntToRun
         
-        # Connect to VPN if needed (use_vpn=True)
-        # Note: VPN is used even with Tor to provide additional layer
+        # Connect to VPN if needed
         vpn_connected = False
-        # Connect to VPN if needed (use_vpn=True)
-        # Note: VPN is used even with Tor to provide additional layer
-        vpn_connected = False
-        if use_vpn or use_tor:
-            print(f"[vote_start] VPN enabled for this job (use_vpn={use_vpn}, use_tor={use_tor}), connecting...")
+        if use_vpn:
+            print(f"[vote_start] VPN enabled for this job, connecting...")
             vpn_connected = connect_vpn()
             if not vpn_connected:
                 print("[vote_start] WARNING: VPN connection failed")
-                if use_tor:
-                     print("[vote_start] WARNING: Tor is enabled but VPN failed. This might cause connection issues if ISP blocks Tor.")
-        
         
         # Recalculate RunPerScript based on current globals
         # This is critical because worker.py sets start_totalToRun/num_threads but might not update RunPerScript
@@ -463,24 +399,6 @@ def vote_start(start_mode):
         else:
             RunPerScript = 0
         cntToRun = RunPerScript
-        
-        if use_tor:
-            print("[vote_start] Checking Tor status...")
-            # Check bootstrap status
-            if not check_tor_bootstrap():
-                print("[vote_start] Waiting for Tor to bootstrap (this may take up to 2 minutes)...")
-                # Wait up to 120 seconds for bootstrap (bridges can be slow)
-                for i in range(24):
-                    time.sleep(5)
-                    if check_tor_bootstrap():
-                        print(f"[vote_start] ✓ Tor bootstrapped successfully after {(i+1)*5} seconds")
-                        break
-                else:
-                    print("[vote_start] WARNING: Tor failed to bootstrap in time. Connection errors likely.")
-            
-            # Test connectivity
-            if not test_tor_connectivity():
-                print("[vote_start] WARNING: Tor connectivity test failed. Connection errors likely.")
         
         print(f"[vote_start] Calculated RunPerScript={RunPerScript}, cntToRun={cntToRun}")
 
