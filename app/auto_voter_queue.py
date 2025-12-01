@@ -511,8 +511,7 @@ def vote_start(start_mode):
                                 if item:
                                     item.status = QueueStatus.canceled
                                     item.current_status = error_msg
-                                    from datetime import datetime, timezone
-                                    item.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                                    item.completed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
                                     db.commit()
                                     print(f"[vote_start] Updated queue item {current_item_id} status to canceled")
                             finally:
