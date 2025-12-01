@@ -359,13 +359,15 @@ def vote_start(start_mode):
         print(f"[vote_start] Starting with mode={start_mode}")
         global RunPerScript, cntToRun
         
-        # Connect to VPN if needed (use_vpn=True and use_tor=False)
+        # Connect to VPN if needed (use_vpn=True)
+        # Note: VPN is used even with Tor to provide additional layer
         vpn_connected = False
-        if use_vpn and not use_tor:
-            print("[vote_start] VPN enabled for this job, connecting...")
+        if use_vpn:
+            print(f"[vote_start] VPN enabled for this job (use_tor={use_tor}), connecting...")
             vpn_connected = connect_vpn()
             if not vpn_connected:
                 print("[vote_start] WARNING: VPN connection failed, continuing anyway...")
+        
         
         # Recalculate RunPerScript based on current globals
         # This is critical because worker.py sets start_totalToRun/num_threads but might not update RunPerScript
@@ -519,10 +521,12 @@ def vote_start(start_mode):
         traceback.print_exc()
         raise
     finally:
-        # Disconnect VPN if we connected it
+        # Disconnect VPN if we connected it (but keep connected if using Tor)
         if use_vpn and not use_tor and vpn_connected:
             print("[vote_start] Job complete, disconnecting VPN...")
             disconnect_vpn()
+        elif use_vpn and use_tor:
+            print("[vote_start] Job complete, keeping VPN connected (Tor mode)")
 
 def print_debug(msg, levelofdetail=2):
 
