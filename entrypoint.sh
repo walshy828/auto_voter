@@ -5,9 +5,9 @@ echo "Starting ExpressVPN daemon..."
 
 # Start ExpressVPN daemon (no --start flag, just run the daemon)
 if [ -f /usr/sbin/expressvpnd ]; then
-    /usr/sbin/expressvpnd &
+    /usr/sbin/expressvpnd > /dev/null 2>&1 &
 elif [ -f /usr/bin/expressvpnd ]; then
-    /usr/bin/expressvpnd &
+    /usr/bin/expressvpnd > /dev/null 2>&1 &
 else
     echo "WARNING: ExpressVPN daemon not found! VPN features will not work."
 fi
