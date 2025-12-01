@@ -195,6 +195,13 @@ def _scheduled_pick_and_start():
     print("[SCHEDULER] Checking for queued items...")
     db = SessionLocal()
     try:
+        # Check if workers are paused
+        from app.models import SystemSetting
+        paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
+        if paused_setting and paused_setting.value == 'true':
+            print("[SCHEDULER] Workers are paused, skipping queue processing")
+            return
+        
         # Check current running workers
         running_count = db.query(QueueItem).filter(QueueItem.status == QueueStatus.running).count()
         max_workers = _get_max_concurrent_workers()
@@ -331,28 +338,53 @@ _update_poll_scheduler_job()
 @app.route('/scheduler/status', methods=['GET'])
 @require_auth
 def scheduler_status():
-    job = scheduler.get_job('poll_queue_runner')
-    # If job exists and next_run_time is not None, it's running (not paused)
-    running = (job is not None and job.next_run_time is not None)
-    return jsonify({'running': running})
+    """Get scheduler status based on database pause flag."""
+    from app.models import SystemSetting
+    db = SessionLocal()
+    try:
+        paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
+        paused = paused_setting and paused_setting.value == 'true'
+        return jsonify({'running': not paused})
+    finally:
+        db.close()
 
 
 @app.route('/scheduler/pause', methods=['POST'])
 @require_auth
 def scheduler_pause():
-    job = scheduler.get_job('poll_queue_runner')
-    if job:
-        job.pause()
-    return jsonify({'paused': True})
+    """Pause workers by setting database flag."""
+    from app.models import SystemSetting
+    db = SessionLocal()
+    try:
+        paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
+        if not paused_setting:
+            paused_setting = SystemSetting(key='workers_paused')
+            db.add(paused_setting)
+        paused_setting.value = 'true'
+        db.commit()
+        print("[SCHEDULER] Workers paused via database flag")
+        return jsonify({'paused': True})
+    finally:
+        db.close()
 
 
 @app.route('/scheduler/resume', methods=['POST'])
 @require_auth
 def scheduler_resume():
-    job = scheduler.get_job('poll_queue_runner')
-    if job:
-        job.resume()
-    return jsonify({'resumed': True})
+    """Resume workers by clearing database flag."""
+    from app.models import SystemSetting
+    db = SessionLocal()
+    try:
+        paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
+        if not paused_setting:
+            paused_setting = SystemSetting(key='workers_paused')
+            db.add(paused_setting)
+        paused_setting.value = 'false'
+        db.commit()
+        print("[SCHEDULER] Workers resumed via database flag")
+        return jsonify({'resumed': True})
+    finally:
+        db.close()
 
 
 @app.route('/poll-scheduler/config', methods=['GET'])

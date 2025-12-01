@@ -18,6 +18,13 @@ def pick_and_start():
     """Pick and start queued voting items."""
     db = SessionLocal()
     try:
+        # Check if workers are paused
+        from app.models import SystemSetting
+        paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
+        if paused_setting and paused_setting.value == 'true':
+            # Workers are paused, skip processing
+            return
+        
         it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
         if it:
             try:
