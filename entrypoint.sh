@@ -78,8 +78,12 @@ EOF
     mkdir -p /var/log/tor
     chown -R debian-tor:debian-tor /var/log/tor /var/lib/tor 2>/dev/null || true
     
-    # Start Tor service in background
-    tor -f /etc/tor/torrc > /var/log/tor/tor.log 2>&1 &
+    # Ensure torrc is readable
+    chmod 644 /etc/tor/torrc
+    
+    # Start Tor service in background as debian-tor user
+    # We use su to drop privileges since we are running as root
+    su -s /bin/bash debian-tor -c "tor -f /etc/tor/torrc > /var/log/tor/tor.log 2>&1 &"
     
     # Wait for Tor to be ready
     echo "Waiting for Tor to start..."
