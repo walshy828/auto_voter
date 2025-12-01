@@ -468,8 +468,32 @@ function attachQueueItemListeners(tr, it) {
     addBtn(btn);
   }
 
+  // Pause button (for running items)
+  if (it.status === 'running') {
+    const btn = el('button', { class: 'btn btn-sm btn-warning me-1' });
+    btn.innerHTML = '<i class="bi bi-pause-fill"></i> Pause';
+    btn.onclick = async () => {
+      await authedFetch(`/queue/${it.id}/pause`, { method: 'POST' });
+      showToast('Paused job #' + it.id, 'warning');
+      refreshQueue();
+    };
+    addBtn(btn);
+  }
+
+  // Resume button (for paused items)
+  if (it.status === 'paused') {
+    const btn = el('button', { class: 'btn btn-sm btn-success me-1' });
+    btn.innerHTML = '<i class="bi bi-play-fill"></i> Resume';
+    btn.onclick = async () => {
+      await authedFetch(`/queue/${it.id}/resume`, { method: 'POST' });
+      showToast('Resumed job #' + it.id, 'success');
+      refreshQueue();
+    };
+    addBtn(btn);
+  }
+
   // Cancel button
-  if (it.status === 'queued' || it.status === 'running') {
+  if (it.status === 'queued' || it.status === 'running' || it.status === 'paused') {
     const btn = el('button', { class: 'btn btn-sm btn-danger' }, 'Cancel');
     btn.onclick = async () => {
       await authedFetch(`/queue/${it.id}/cancel`, { method: 'POST' });
@@ -565,6 +589,7 @@ function statusToBadge(s) {
   const map = {
     queued: '<span class="badge bg-secondary">queued</span>',
     running: '<span class="badge bg-primary">running</span>',
+    paused: '<span class="badge bg-warning text-dark">paused</span>',
     completed: '<span class="badge bg-success">completed</span>',
     canceled: '<span class="badge bg-danger">canceled</span>'
   };
@@ -723,7 +748,7 @@ async function refreshSchedulerStatus() {
       badge.className = 'badge bg-success me-2';
       badge.textContent = 'Workers Running';
       btn.textContent = 'Pause Workers';
-      btn.className = 'btn btn-sm btn-outline-warning';
+      btn.className = 'btn btn-primary';
       btn.onclick = async () => {
         await authedFetch('/scheduler/pause', { method: 'POST' });
         refreshSchedulerStatus();
@@ -733,7 +758,7 @@ async function refreshSchedulerStatus() {
       badge.className = 'badge bg-warning text-dark me-2';
       badge.textContent = 'Workers Paused';
       btn.textContent = 'Resume Workers';
-      btn.className = 'btn btn-sm btn-outline-success';
+      btn.className = 'btn btn-success';
       btn.onclick = async () => {
         try {
           await authedFetch('/scheduler/resume', { method: 'POST' });
@@ -747,6 +772,27 @@ async function refreshSchedulerStatus() {
     console.log('Scheduler status fetch failed', e);
   }
 }
+
+// Manual trigger button handler
+document.getElementById('btnTriggerScheduler').addEventListener('click', async () => {
+  const btn = document.getElementById('btnTriggerScheduler');
+  const icon = btn.querySelector('i');
+
+  btn.disabled = true;
+  if (icon) icon.classList.add('spin-anim');
+
+  try {
+    await authedFetch('/scheduler/trigger', { method: 'POST' });
+    showToast('Scheduler triggered! Checking for queued items...', 'success');
+    // Refresh queue to show any status changes
+    setTimeout(() => refreshQueue(), 1000);
+  } catch (e) {
+    showToast('Failed to trigger scheduler: ' + e.message, 'danger');
+  } finally {
+    btn.disabled = false;
+    if (icon) icon.classList.remove('spin-anim');
+  }
+});
 
 async function refreshPollSchedulerStatus() {
   try {

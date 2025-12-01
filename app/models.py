@@ -18,6 +18,7 @@ def utcnow():
 class QueueStatus(str, enum.Enum):
     queued = 'queued'
     running = 'running'
+    paused = 'paused'
     completed = 'completed'
     canceled = 'canceled'
 

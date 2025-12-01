@@ -208,6 +208,10 @@
               autocomplete="off">
             <label class="btn btn-outline-info" for="filterRunning">Running</label>
 
+            <input type="radio" class="btn-check" name="queueFilter" id="filterPaused" value="paused"
+              autocomplete="off">
+            <label class="btn btn-outline-warning" for="filterPaused">Paused</label>
+
             <input type="radio" class="btn-check" name="queueFilter" id="filterCompleted" value="completed"
               autocomplete="off">
             <label class="btn btn-outline-success" for="filterCompleted">Done</label>
@@ -298,9 +302,14 @@
                     <i class="bi bi-info-circle me-1"></i>
                     Controls the background process that picks up and starts queued voting jobs.
                   </p>
-                  <button id="btnToggleScheduler" class="btn btn-primary w-100" disabled>
-                    Pause Workers
-                  </button>
+                  <div class="d-grid gap-2">
+                    <button id="btnToggleScheduler" class="btn btn-primary" disabled>
+                      Pause Workers
+                    </button>
+                    <button id="btnTriggerScheduler" class="btn btn-success">
+                      <i class="bi bi-lightning-fill"></i> Trigger Now
+                    </button>
+                  </div>
                 </div>
               </div>
 

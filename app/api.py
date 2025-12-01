@@ -1059,6 +1059,72 @@ def retry_queue_item(item_id):
         db.close()
 
 
+@app.route('/queue/<int:item_id>/pause', methods=['POST'])
+@require_auth
+def pause_queue_item(item_id):
+    """Pause a running queue item."""
+    db = SessionLocal()
+    try:
+        it = db.query(QueueItem).filter(QueueItem.id == item_id).first()
+        if not it:
+            return abort(404, 'Item not found')
+        
+        if it.status != QueueStatus.running:
+            return abort(400, 'Item is not running')
+        
+        # Update status to paused
+        it.status = QueueStatus.paused
+        it.current_status = 'Paused by user'
+        db.commit()
+        
+        socketio.emit('queue_update', {'type': 'status', 'item_id': item_id, 'status': 'paused'})
+        return jsonify({'paused': True, 'message': 'Item paused successfully'})
+    except Exception as e:
+        return abort(500, str(e))
+    finally:
+        db.close()
+
+
+@app.route('/queue/<int:item_id>/resume', methods=['POST'])
+@require_auth
+def resume_queue_item(item_id):
+    """Resume a paused queue item."""
+    db = SessionLocal()
+    try:
+        it = db.query(QueueItem).filter(QueueItem.id == item_id).first()
+        if not it:
+            return abort(404, 'Item not found')
+        
+        if it.status != QueueStatus.paused:
+            return abort(400, 'Item is not paused')
+        
+        # Update status back to running
+        it.status = QueueStatus.running
+        it.current_status = 'Resumed - continuing execution'
+        db.commit()
+        
+        socketio.emit('queue_update', {'type': 'status', 'item_id': item_id, 'status': 'running'})
+        return jsonify({'resumed': True, 'message': 'Item resumed successfully'})
+    except Exception as e:
+        return abort(500, str(e))
+    finally:
+        db.close()
+
+
+@app.route('/scheduler/trigger', methods=['POST'])
+@require_auth
+def trigger_scheduler():
+    """Manually trigger the scheduler to check for queued items immediately."""
+    try:
+        print("[SCHEDULER] Manual trigger requested")
+        # Call the scheduler function directly
+        _scheduled_pick_and_start()
+        return jsonify({'success': True, 'message': 'Scheduler triggered successfully'})
+    except Exception as e:
+        print(f"[SCHEDULER] Manual trigger error: {e}")
+        return abort(500, str(e))
+
+
 @app.route('/workers', methods=['GET'])
 @require_auth
 def list_workers():

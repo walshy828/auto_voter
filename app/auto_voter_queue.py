@@ -242,6 +242,9 @@ def update_queue_progress(item_id, votes_cast, votes_success, status):
 def connect_vpn():
     """Connect to ExpressVPN using random location from vpnloc list."""
     global vpnlocat
+    """Connect to ExpressVPN with a random location from the list."""
+    global vpnlocat
+    start_time = time.time()
     try:
         import subprocess
         # Check if expressvpn command exists first (quick check)
@@ -250,12 +253,15 @@ def connect_vpn():
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
             print("[VPN] ExpressVPN not found or not available")
             return False
-        
+
         # Check if already connected (short timeout)
+        status_start = time.time()
         try:
             result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=3)
+            status_elapsed = time.time() - status_start
             if DEBUG_MODE:
                 print(f"[VPN DEBUG] Status output: {result.stdout}")
+            print(f"[VPN PERF] Status check took {status_elapsed:.2f}s")
             
             if 'Connected' in result.stdout:
                 # Extract location from status output
@@ -264,10 +270,12 @@ def connect_vpn():
                     if 'Connected to' in line:
                         location = line.split('Connected to')[-1].strip()
                         break
-                print(f"[VPN] Already connected to: {location}")
+                total_elapsed = time.time() - start_time
+                print(f"[VPN] Already connected to: {location} (total: {total_elapsed:.2f}s)")
                 return True
         except subprocess.TimeoutExpired:
-            print("[VPN] Status check timed out")
+            status_elapsed = time.time() - status_start
+            print(f"[VPN] Status check timed out after {status_elapsed:.2f}s")
             # Don't return False here, try to connect anyway
         
         # Get random location from list
@@ -295,16 +303,21 @@ def connect_vpn():
             location_alias = "smart"
         
         # Enforce Network Lock OFF before connecting
+        netlock_start = time.time()
         try:
             subprocess.run(['expressvpn', 'preferences', 'set', 'network_lock', 'off'], 
                          capture_output=True, timeout=5, check=False)
-            print("[VPN] Enforced Network Lock: OFF")
+            netlock_elapsed = time.time() - netlock_start
+            print(f"[VPN] Enforced Network Lock: OFF ({netlock_elapsed:.2f}s)")
         except Exception as e:
-            print(f"[VPN] Warning: Failed to set network_lock off: {e}")
+            netlock_elapsed = time.time() - netlock_start
+            print(f"[VPN] Warning: Failed to set network_lock off after {netlock_elapsed:.2f}s: {e}")
 
+        connect_start = time.time()
         try:
             result = subprocess.run(['expressvpn', 'connect', location_alias], 
                                   capture_output=True, text=True, timeout=15)
+            connect_elapsed = time.time() - connect_start
             
             if result.returncode == 0:
                 # Get the connected location
@@ -313,25 +326,30 @@ def connect_vpn():
                     if 'Connected to' in line:
                         location = line.split('Connected to')[-1].strip()
                         break
-                print(f"[VPN] ✓ Connected successfully to: {location}")
+                total_elapsed = time.time() - start_time
+                print(f"[VPN] ✓ Connected successfully to: {location} (connect: {connect_elapsed:.2f}s, total: {total_elapsed:.2f}s)")
                 return True
             else:
                 # Check for "already connected" message
                 if "Please disconnect first" in result.stdout or "Please disconnect first" in result.stderr:
-                     print("[VPN] VPN was already connected (detected via connect error).")
+                     total_elapsed = time.time() - start_time
+                     print(f"[VPN] VPN was already connected (detected via connect error, total: {total_elapsed:.2f}s).")
                      return True
                      
-                print(f"[VPN] Connection failed: {result.stderr} {result.stdout}")
+                print(f"[VPN] Connection failed after {connect_elapsed:.2f}s: {result.stderr} {result.stdout}")
                 return False
         except subprocess.TimeoutExpired:
-            print("[VPN] Connection timed out after 15s")
+            connect_elapsed = time.time() - connect_start
+            print(f"[VPN] Connection timed out after {connect_elapsed:.2f}s")
             return False
     except Exception as e:
-        print(f"[VPN] Error connecting: {e}")
+        total_elapsed = time.time() - start_time
+        print(f"[VPN] Error connecting after {total_elapsed:.2f}s: {e}")
         return False
 
 def disconnect_vpn():
     """Disconnect from ExpressVPN."""
+    start_time = time.time()
     try:
         import subprocess
         # Check if expressvpn command exists first
@@ -355,17 +373,20 @@ def disconnect_vpn():
         print("[VPN] Disconnecting from ExpressVPN...")
         try:
             result = subprocess.run(['expressvpn', 'disconnect'], capture_output=True, text=True, timeout=5)
+            elapsed = time.time() - start_time
             if result.returncode == 0:
-                print("[VPN] Disconnected successfully")
+                print(f"[VPN] ✓ Disconnected successfully ({elapsed:.2f}s)")
                 return True
             else:
-                print(f"[VPN] Disconnection failed: {result.stderr}")
+                print(f"[VPN] Disconnection failed after {elapsed:.2f}s: {result.stderr}")
                 return False
         except subprocess.TimeoutExpired:
-            print("[VPN] Disconnect timed out after 5s")
+            elapsed = time.time() - start_time
+            print(f"[VPN] Disconnect timed out after {elapsed:.2f}s")
             return False
     except Exception as e:
-        print(f"[VPN] Error disconnecting: {e}")
+        elapsed = time.time() - start_time
+        print(f"[VPN] Error disconnecting after {elapsed:.2f}s: {e}")
         return False
 
 def vote_start(start_mode):
@@ -381,16 +402,21 @@ def vote_start(start_mode):
     - Adaptive pausing: if success rate < 60% and not using Tor, extends pause time
     """
     try:
+        job_start_time = time.time()
         print(f"[vote_start] Starting with mode={start_mode}")
         global RunPerScript, cntToRun
         
         # Connect to VPN if needed
         vpn_connected = False
         if use_vpn:
+            vpn_start = time.time()
             print(f"[vote_start] VPN enabled for this job, connecting...")
             vpn_connected = connect_vpn()
+            vpn_elapsed = time.time() - vpn_start
             if not vpn_connected:
-                print("[vote_start] WARNING: VPN connection failed")
+                print(f"[vote_start] WARNING: VPN connection failed after {vpn_elapsed:.2f}s")
+            else:
+                print(f"[vote_start] VPN connection completed in {vpn_elapsed:.2f}s")
         
         # Recalculate RunPerScript based on current globals
         # This is critical because worker.py sets start_totalToRun/num_threads but might not update RunPerScript
@@ -425,6 +451,26 @@ def vote_start(start_mode):
         while total_ran_per_thread < RunPerScript:
             batch_index += 1
             
+            # Check for pause status before each batch
+            if current_item_id:
+                from app.db import SessionLocal
+                from app.models import QueueItem, QueueStatus
+                db = SessionLocal()
+                try:
+                    item = db.query(QueueItem).filter(QueueItem.id == current_item_id).first()
+                    if item and item.status == QueueStatus.paused:
+                        print(f"[vote_start] Item {current_item_id} is paused, waiting...")
+                        # Wait in a loop checking every 5 seconds for resume
+                        while True:
+                            time.sleep(5)
+                            db.refresh(item)
+                            if item.status != QueueStatus.paused:
+                                print(f"[vote_start] Item {current_item_id} resumed, continuing...")
+                                break
+                            print(f"[vote_start] Still paused, checking again...")
+                finally:
+                    db.close()
+            
             # Determine how many to run in this batch
             # Don't exceed the remaining votes needed per thread
             # And don't exceed the batch size (p2_PerRun)
@@ -436,21 +482,29 @@ def vote_start(start_mode):
             if to_run_this_batch <= 0:
                 break
 
+            # Start timing for this batch
+            batch_start = time.time()
             starttime = datetime.datetime.now()
 
             # Switch VPN location only if using VPN and NOT using Tor
             # print(f"[vote_start] use_vpn={use_vpn}, use_tor={use_tor}")
             if use_vpn and not use_tor:
+                vpn_switch_start = time.time()
                 # print(f"[vote_start] Calling new_location()...")
                 new_location()
+                vpn_switch_elapsed = time.time() - vpn_switch_start
+                print(f"[vote_start PERF] VPN location switch took {vpn_switch_elapsed:.2f}s")
                 # print(f"[vote_start] new_location() completed")
             
             # Run the voting threads
             if DEBUG_MODE:
                 print(f"[DEBUG] Batch {batch_index}: Running {num_threads} threads x {to_run_this_batch} votes")
             
+            voting_start = time.time()
             print(f"[vote_start] Calling run_multi_scripts({num_threads}, {to_run_this_batch})...")
             run_multi_scripts(num_threads, to_run_this_batch)
+            voting_elapsed = time.time() - voting_start
+            print(f"[vote_start PERF] Voting batch {batch_index} took {voting_elapsed:.2f}s")
             
             # Update counters
             total_ran_per_thread += to_run_this_batch
@@ -493,6 +547,7 @@ def vote_start(start_mode):
             # Calculate success rate for the last batch would require tracking previous count_good
             # For simplicity, let's use the overall success rate for adaptive pausing
             
+            pause_start = time.time()
             if int(PercentGood) < 60 and not use_tor:
                 pause_time = 70 if p2_pause < 75 else (300 if p2_pause < 120 else 600)
                 if current_item_id:
@@ -538,6 +593,10 @@ def vote_start(start_mode):
                     disconnect_vpn()
                 
                 time.sleep(p2_pause)
+            
+            pause_elapsed = time.time() - pause_start
+            batch_elapsed = time.time() - batch_start
+            print(f"[vote_start PERF] Batch {batch_index} total (including pause): {batch_elapsed:.2f}s (pause: {pause_elapsed:.2f}s)")
     except Exception as e:
         print(f"[vote_start] FATAL ERROR: {e}")
         import traceback
@@ -584,10 +643,22 @@ def run_multi_scripts(times, run_count):
     # print(f"[run_multi_scripts] All threads completed")
 
 def new_location():
-    global vpnlocat, vpn_votecnt
-    if not use_vpn:
+    """
+    Switch to a new VPN location.
+    """
+    global vpnlocat
+    start_time = time.time()
+    
+    # Disconnect first
+    disconnect_start = time.time()
+    if not disconnect_vpn():
+        print("[VPN] Failed to disconnect, aborting location switch")
         return
-
+    disconnect_elapsed = time.time() - disconnect_start
+    
+    # Increment location counter
+    vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+    
     if vpnmode == 1:
         # Find next US location
         start_index = vpnlocat
@@ -599,20 +670,30 @@ def new_location():
                 print("[VPN] Warning: No US locations found in config!")
                 break
 
+    connect_start = time.time()
     try:
+        import subprocess
         location_alias = vpnloc[vpnlocat]["alias"]
-        print(f"[VPN] Switching to location: {location_alias}")
-        connect_alias(location_alias)
-        print(f"[VPN] ✓ Successfully switched to: {location_alias}")
+        print(f"[VPN] Switching to new location: {location_alias}...")
+        
+        result = subprocess.run(['expressvpn', 'connect', location_alias], 
+                              capture_output=True, text=True, timeout=15)
+        connect_elapsed = time.time() - connect_start
+        total_elapsed = time.time() - start_time
+        
+        if result.returncode == 0:
+            # Extract location from output
+            location = "Unknown"
+            for line in result.stdout.split('\n'):
+                if 'Connected to' in line:
+                    location = line.split('Connected to')[-1].strip()
+                    break
+            print(f"[VPN] ✓ Switched to: {location} (disconnect: {disconnect_elapsed:.2f}s, connect: {connect_elapsed:.2f}s, total: {total_elapsed:.2f}s)")
+        else:
+            print(f"[VPN] Failed to switch location after {total_elapsed:.2f}s: {result.stderr}")
     except Exception as e:
-        print(f"[VPN] ✗ Connection Error switching to {vpnloc[vpnlocat]['alias']}: {type(e).__name__}: {e}")
-        if print_debug_msg:
-            import traceback
-            traceback.print_exc()
-
-    vpn_votecnt = 0
-    vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
-
+        total_elapsed = time.time() - start_time
+        print(f"[VPN] Error switching location after {total_elapsed:.2f}s: {e}")
 
 def auto_voter(thread_id, RunCount):
     try:
