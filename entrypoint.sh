@@ -12,7 +12,7 @@ else
     echo "WARNING: ExpressVPN daemon not found! VPN features will not work."
 fi
 
-# Wait for daemon to be ready
+# Wait for daemon to be ready t
 sleep 5
 
 # Activate if code is provided
