@@ -27,10 +27,8 @@ if expressvpn status &>/dev/null; then
     expressvpn preferences set auto_connect false || true
     expressvpn preferences set preferred_protocol lightway_udp || true
     expressvpn preferences set send_diagnostics false || true
-    # Force disable network lock multiple ways
+    # Force disable network lock
     expressvpn preferences set network_lock off || true
-    expressvpn preferences set network_lock_enabled false || true
-    expressvpn preferences set network_lock_enabled false || true
 else
     echo "WARNING: ExpressVPN daemon not responding, skipping preference configuration"
 fi
@@ -41,10 +39,19 @@ echo "Configuring split tunneling for local networks..."
 GW=$(ip route show | grep default | awk '{print $3}' | head -n 1)
 if [ -n "$GW" ]; then
     echo "Default gateway found: $GW"
-    ip route add 10.0.0.0/8 via $GW dev eth0 || true
-    ip route add 172.16.0.0/12 via $GW dev eth0 || true
-    ip route add 192.168.0.0/16 via $GW dev eth0 || true
-    echo "Local routes added successfully"
+    # Helper function to add route if not exists
+    add_route() {
+        if ! ip route show | grep -q "$1"; then
+            ip route add "$1" via "$GW" dev eth0 && echo "Added route for $1" || echo "Failed to add route for $1"
+        else
+            echo "Route for $1 already exists"
+        fi
+    }
+    
+    add_route "10.0.0.0/8"
+    add_route "172.16.0.0/12"
+    add_route "192.168.0.0/16"
+    echo "Local routes configuration completed"
 else
     echo "WARNING: Could not determine default gateway, skipping route configuration"
 fi
