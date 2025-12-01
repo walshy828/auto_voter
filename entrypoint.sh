@@ -106,25 +106,6 @@ EOF
         else
             echo "No Tor log file found at /var/log/tor/tor.log"
         fi
-    else
-        # Wait for Tor to bootstrap
-        echo "Waiting for Tor to bootstrap..."
-        BOOTSTRAPPED=false
-        for i in {1..30}; do
-            if grep -q "Bootstrapped 100%" /var/log/tor/tor.log 2>/dev/null; then
-                echo "✓ Tor bootstrapped 100%"
-                BOOTSTRAPPED=true
-                break
-            fi
-            sleep 1
-        done
-        
-        if [ "$BOOTSTRAPPED" = false ]; then
-             echo "WARNING: Tor did not fully bootstrap within 30s, continuing anyway..."
-             echo "--- Tor Log Tail ---"
-             tail -n 10 /var/log/tor/tor.log 2>/dev/null
-             echo "--------------------"
-        fi
     fi
 else
     echo "TOR_PASSWORD not set, skipping Tor configuration"

@@ -43,6 +43,7 @@ def _run_vote_wrapper(item_id: int, worker_id: int, log_path: str = None):
             return
 
         print(f"[Worker {worker_id}] Configuring: pollid={it.pollid}, answerid={it.answerid}, votes={it.votes}, threads={it.threads}")
+        print(f"[Worker {worker_id}] Settings: use_vpn={bool(it.use_vpn)}, use_tor={bool(it.use_tor)}")
         
         avq.pollid = it.pollid
         avq.answerid = it.answerid
