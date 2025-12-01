@@ -11,7 +11,8 @@ services:
     environment:
       - FLASK_ENV=production
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
-      - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
+      # VPN removed from web service to prevent UI freezing
+      # - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
       - ADMIN_USER=${ADMIN_USER}
       - ADMIN_PASS=${ADMIN_PASS}
       - ADMIN_TOKEN=${ADMIN_TOKEN}
@@ -46,7 +47,7 @@ services:
     devices:
       - /dev/net/tun
     environment:
-      - AUTO_VOTER_SCHEDULE_INTERVAL=${AUTO_VOTER_SCHEDULE_INTERVAL:-30}
+      - AUTO_VOTER_SCHEDULE_INTERVAL=${AUTO_VOTER_SCHEDULE_INTERVAL:-10}
       - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
       - AUTO_VOTER_DB=sqlite:///./data/auto_voter.db
       - AUTO_VOTER_LOG_DIR=./data/logs

@@ -951,14 +951,23 @@ def list_queue():
 @app.route('/queue/<int:item_id>/start', methods=['POST'])
 @require_auth
 def start_queue_item(item_id):
-    # Start a queue item in the background
-    from app.worker import start_queue_item_background
+    # Mark item as queued so the scheduler picks it up
+    # This ensures execution happens in the scheduler container (with VPN), not the web container
+    db = SessionLocal()
     try:
-        pid = start_queue_item_background(item_id, socketio=socketio)
-        socketio.emit('queue_update', {'type': 'start', 'item_id': item_id})
-        return jsonify({'started': True, 'pid': pid})
+        it = db.query(QueueItem).filter(QueueItem.id == item_id).first()
+        if not it:
+            return abort(404, 'Item not found')
+        
+        it.status = QueueStatus.queued
+        db.commit()
+        
+        socketio.emit('queue_update', {'type': 'status', 'item_id': item_id, 'status': 'queued'})
+        return jsonify({'started': True, 'message': 'Item queued for execution'})
     except Exception as e:
         return abort(500, str(e))
+    finally:
+        db.close()
 
 
 @app.route('/queue/<int:item_id>/cancel', methods=['POST'])
