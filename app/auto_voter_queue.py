@@ -254,6 +254,9 @@ def connect_vpn():
         # Check if already connected (short timeout)
         try:
             result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=3)
+            if DEBUG_MODE:
+                print(f"[VPN DEBUG] Status output: {result.stdout}")
+            
             if 'Connected' in result.stdout:
                 # Extract location from status output
                 location = "Unknown"
@@ -265,7 +268,7 @@ def connect_vpn():
                 return True
         except subprocess.TimeoutExpired:
             print("[VPN] Status check timed out")
-            return False
+            # Don't return False here, try to connect anyway
         
         # Get random location from list
         try:
@@ -286,6 +289,7 @@ def connect_vpn():
         try:
             result = subprocess.run(['expressvpn', 'connect', location_alias], 
                                   capture_output=True, text=True, timeout=15)
+            
             if result.returncode == 0:
                 # Get the connected location
                 location = "Unknown"
@@ -296,7 +300,12 @@ def connect_vpn():
                 print(f"[VPN] ✓ Connected successfully to: {location}")
                 return True
             else:
-                print(f"[VPN] Connection failed: {result.stderr}")
+                # Check for "already connected" message
+                if "Please disconnect first" in result.stdout or "Please disconnect first" in result.stderr:
+                     print("[VPN] VPN was already connected (detected via connect error).")
+                     return True
+                     
+                print(f"[VPN] Connection failed: {result.stderr} {result.stdout}")
                 return False
         except subprocess.TimeoutExpired:
             print("[VPN] Connection timed out after 15s")
