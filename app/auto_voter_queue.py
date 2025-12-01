@@ -272,8 +272,24 @@ def connect_vpn():
         
         # Get random location from list
         try:
+            # If vpnmode is 1, ensure we pick a US location
+            if vpnmode == 1:
+                # Try to find a US location starting from current vpnlocat
+                start_index = vpnlocat
+                found_us = False
+                while True:
+                    if vpnloc[vpnlocat]["loc"] == "us":
+                        found_us = True
+                        break
+                    vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+                    if vpnlocat == start_index:
+                        break
+                
+                if not found_us:
+                     print("[VPN] Warning: No US locations found, using current index")
+
             location_alias = vpnloc[vpnlocat]["alias"]
-            print(f"[VPN] Connecting to random location: {location_alias}...")
+            print(f"[VPN] Connecting to location: {location_alias} (loc={vpnloc[vpnlocat].get('loc', 'unknown')})...")
         except (IndexError, KeyError) as e:
             print(f"[VPN] Error getting location from list: {e}, falling back to 'smart'")
             location_alias = "smart"
@@ -580,8 +596,15 @@ def new_location():
         return
 
     if vpnmode == 1:
-        while vpnloc[vpnlocat]["loc"] != "us":
+        # Find next US location
+        start_index = vpnlocat
+        while True:
             vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+            if vpnloc[vpnlocat]["loc"] == "us":
+                break
+            if vpnlocat == start_index:
+                print("[VPN] Warning: No US locations found in config!")
+                break
 
     try:
         location_alias = vpnloc[vpnlocat]["alias"]
@@ -642,7 +665,8 @@ def auto_voter(thread_id, RunCount):
                     session.proxies.update(proxies)
                 
                 # print(f"[auto_voter] Thread {thread_id} requesting poll {pollid}...")
-                resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
+                # print(f"[auto_voter] Thread {thread_id} requesting poll {pollid}...")
+                resp = session.get(f"https://poll.fm/{pollid}", timeout=30)
                 # print(f"[auto_voter] Thread {thread_id} got response: {resp.status_code}")
                 resp.raise_for_status()
 
