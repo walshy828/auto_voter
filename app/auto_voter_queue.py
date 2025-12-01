@@ -373,16 +373,31 @@ def disconnect_vpn():
         print("[VPN] Disconnecting from ExpressVPN...")
         try:
             result = subprocess.run(['expressvpn', 'disconnect'], capture_output=True, text=True, timeout=5)
-            elapsed = time.time() - start_time
-            if result.returncode == 0:
-                print(f"[VPN] ✓ Disconnected successfully ({elapsed:.2f}s)")
+            disconnect_elapsed = time.time() - start_time
+            
+            if result.returncode == 0 or 'Not connected' in result.stdout:
+                print(f"[VPN] ✓ Disconnected successfully ({disconnect_elapsed:.2f}s)")
                 return True
             else:
-                print(f"[VPN] Disconnection failed after {elapsed:.2f}s: {result.stderr}")
+                print(f"[VPN] Disconnection failed after {disconnect_elapsed:.2f}s: {result.stderr}")
+                
+                # Check for daemon error
+                if "Cannot connect to expressvpnd daemon" in result.stderr or "expressvpnd daemon is not running" in result.stderr:
+                    print("[VPN] Daemon appears to be down during disconnect. Attempting to restart...")
+                    try:
+                        subprocess.run(['service', 'expressvpn', 'restart'], timeout=10)
+                        print("[VPN] Daemon restart command issued. Waiting 5s...")
+                        time.sleep(5)
+                        # Try disconnect one more time
+                        subprocess.run(['expressvpn', 'disconnect'], capture_output=True, timeout=5)
+                        return True # Assume success or at least we tried
+                    except Exception as de:
+                        print(f"[VPN] Failed to restart daemon: {de}")
+                
                 return False
         except subprocess.TimeoutExpired:
-            elapsed = time.time() - start_time
-            print(f"[VPN] Disconnect timed out after {elapsed:.2f}s")
+            disconnect_elapsed = time.time() - start_time
+            print(f"[VPN] Disconnect timed out after {disconnect_elapsed:.2f}s")
             return False
     except Exception as e:
         elapsed = time.time() - start_time
@@ -703,6 +718,11 @@ def new_location():
             if not disconnect_vpn():
                 disconnect_elapsed = time.time() - disconnect_start
                 print(f"[VPN] Failed to disconnect after {disconnect_elapsed:.2f}s on attempt {attempt + 1}/{max_retries}")
+                
+                # Check if we should restart daemon
+                # Note: disconnect_vpn handles its own logging, but if it returned False, something went wrong.
+                # We'll rely on the retry loop to handle it.
+                
                 if attempt < max_retries - 1:
                     print(f"[VPN] Retrying with next location...")
                     vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
@@ -750,6 +770,17 @@ def new_location():
                 return True
             else:
                 print(f"[VPN] Failed to switch to {location_alias} after {total_elapsed:.2f}s: {result.stderr}")
+                
+                # Check for daemon error
+                if "Cannot connect to expressvpnd daemon" in result.stderr or "expressvpnd daemon is not running" in result.stderr:
+                    print("[VPN] Daemon appears to be down. Attempting to restart...")
+                    try:
+                        subprocess.run(['service', 'expressvpn', 'restart'], timeout=10)
+                        print("[VPN] Daemon restart command issued. Waiting 5s...")
+                        time.sleep(5)
+                    except Exception as de:
+                        print(f"[VPN] Failed to restart daemon: {de}")
+
                 if attempt < max_retries - 1:
                     print(f"[VPN] Retrying with next location...")
                     continue
@@ -760,10 +791,13 @@ def new_location():
             connect_elapsed = time.time() - connect_start
             total_elapsed = time.time() - start_time
             print(f"[VPN] ERROR: Connection to {location_alias} timed out after {connect_elapsed:.2f}s (total: {total_elapsed:.2f}s)")
-            # Kill the hanging process
-            print("[VPN] Attempting to kill hanging VPN process...")
+            
+            # Kill ONLY the hanging connect process, not the daemon
+            print("[VPN] Attempting to kill hanging VPN connection process...")
             try:
-                subprocess.run(['pkill', '-9', 'expressvpn'], timeout=5)
+                # Use pkill -f to match the full command line "expressvpn connect"
+                # This avoids killing the daemon "expressvpnd"
+                subprocess.run(['pkill', '-9', '-f', 'expressvpn connect'], timeout=5)
             except:
                 pass
             
