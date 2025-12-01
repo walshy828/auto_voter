@@ -13,6 +13,8 @@ services:
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
       # VPN removed from web service to prevent UI freezing
       # - EXPRESSVPN_ACTIVATION_CODE=${EXPRESSVPN_ACTIVATION_CODE}
+      # Disable internal scheduler so only the dedicated scheduler container runs jobs
+      - ENABLE_INTERNAL_SCHEDULER=false
       - ADMIN_USER=${ADMIN_USER}
       - ADMIN_PASS=${ADMIN_PASS}
       - ADMIN_TOKEN=${ADMIN_TOKEN}

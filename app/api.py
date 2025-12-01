@@ -247,7 +247,10 @@ def start_scheduler_if_needed():
 
 
 # Start scheduler automatically (in development this may run twice if using the reloader - env flag prevents duplicates)
-start_scheduler_if_needed()
+if os.environ.get('ENABLE_INTERNAL_SCHEDULER', 'true').lower() == 'true':
+    start_scheduler_if_needed()
+else:
+    print("[SCHEDULER] Internal scheduler disabled via environment variable")
 
 
 # ====== Poll Results Scheduler ======
