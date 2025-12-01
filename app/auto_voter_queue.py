@@ -477,11 +477,18 @@ def vote_start(start_mode):
                     time.sleep(70)
                 elif p2_pause < 120:
                     if DEBUG_MODE:
+                    if DEBUG_MODE:
                         print("[DEBUG] Low success rate, sleeping 300s")
+                    # Disconnect during long sleep to save CPU
+                    if use_vpn and not use_tor:
+                        disconnect_vpn()
                     time.sleep(300)
                 else:
                     if DEBUG_MODE:
                         print("[DEBUG] Low success rate, sleeping 600s")
+                    # Disconnect during long sleep to save CPU
+                    if use_vpn and not use_tor:
+                        disconnect_vpn()
                     time.sleep(600)
             else:
                 if current_item_id and p2_pause > 0:
@@ -494,6 +501,11 @@ def vote_start(start_mode):
                 
                 if DEBUG_MODE:
                     print(f"[DEBUG] Sleeping {p2_pause}s")
+                
+                # Disconnect during pause if > 10s to save CPU
+                if p2_pause > 10 and use_vpn and not use_tor:
+                    disconnect_vpn()
+                
                 time.sleep(p2_pause)
     except Exception as e:
         print(f"[vote_start] FATAL ERROR: {e}")
