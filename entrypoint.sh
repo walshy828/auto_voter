@@ -77,26 +77,27 @@ EOF
     
     # Create log directory
     mkdir -p /var/log/tor
-    chown -R debian-tor:debian-tor /var/log/tor /var/lib/tor 2>/dev/null || true
+    # Set permissions for root (since we run as root to ensure VPN access)
+    chown -R root:root /var/log/tor /var/lib/tor 2>/dev/null || true
+    chmod 700 /var/lib/tor
     
     # Ensure torrc is readable
     chmod 644 /etc/tor/torrc
     
-    # Verify network access for debian-tor user
-    echo "Verifying network access for debian-tor user..."
-    if su -s /bin/bash debian-tor -c "curl -s --connect-timeout 5 https://1.1.1.1 > /dev/null"; then
-        echo "✓ debian-tor user has internet access"
+    # Verify network access (as root)
+    echo "Verifying network access..."
+    if curl -s --connect-timeout 5 https://1.1.1.1 > /dev/null; then
+        echo "✓ System has internet access"
     else
-        echo "✗ debian-tor user CANNOT reach internet (curl failed)"
+        echo "✗ System CANNOT reach internet (curl failed)"
         echo "Debug: Checking routing table..."
         ip route show
-        echo "Debug: Checking iptables..."
-        iptables -L -n -v
     fi
 
-    # Start Tor service in background as debian-tor user
-    # We use su to drop privileges since we are running as root
-    su -s /bin/bash debian-tor -c "tor -f /etc/tor/torrc > /var/log/tor/tor.log 2>&1 &"
+    # Start Tor service in background as root
+    # We run as root to ensure access to the VPN interface/routing
+    echo "Starting Tor as root..."
+    tor -f /etc/tor/torrc > /var/log/tor/tor.log 2>&1 &
     
     # Wait for Tor to be ready
     echo "Waiting for Tor to start..."
