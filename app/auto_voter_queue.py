@@ -628,7 +628,7 @@ def auto_voter(thread_id, RunCount):
                     session.proxies.update(proxies)
                 
                 # print(f"[auto_voter] Thread {thread_id} requesting poll {pollid}...")
-                resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
+                resp = session.get(f"https://poll.fm/{pollid}", timeout=30)
                 # print(f"[auto_voter] Thread {thread_id} got response: {resp.status_code}")
                 resp.raise_for_status()
 

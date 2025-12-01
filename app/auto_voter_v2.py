@@ -191,7 +191,7 @@ def auto_voter(thread_id, RunCount):
 
                 session.proxies.update(proxies)
 
-            resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
+            resp = session.get(f"https://poll.fm/{pollid}", timeout=30)
             resp.raise_for_status()
 
             PD_REQ_AUTH = resp.cookies.get("PD_REQ_AUTH")
