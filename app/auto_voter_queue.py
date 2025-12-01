@@ -504,48 +504,52 @@ def vote_start(start_mode):
             # Switch VPN location only if using VPN and NOT using Tor
             # print(f"[vote_start] use_vpn={use_vpn}, use_tor={use_tor}")
             if use_vpn and not use_tor:
-                vpn_switch_start = time.time()
-                # print(f"[vote_start] Calling new_location()...")
-                try:
-                    success = new_location()
-                    vpn_switch_elapsed = time.time() - vpn_switch_start
-                    if success:
-                        print(f"[vote_start PERF] VPN location switch took {vpn_switch_elapsed:.2f}s")
-                    else:
-                        # All VPN retry attempts failed
-                        error_msg = f"FATAL: VPN connection failed after {vpn_switch_elapsed:.2f}s - all retry attempts exhausted"
-                        print(f"[vote_start] {error_msg}")
-                        
-                        # Update queue item status to failed
-                        if current_item_id:
-                            from app.db import SessionLocal
-                            from app.models import QueueItem, QueueStatus
-                            db = SessionLocal()
-                            try:
-                                item = db.query(QueueItem).filter(QueueItem.id == current_item_id).first()
-                                if item:
-                                    item.status = QueueStatus.canceled
-                                    item.current_status = error_msg
-                                    item.completed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-                                    db.commit()
-                                    print(f"[vote_start] Updated queue item {current_item_id} status to canceled")
-                            finally:
-                                db.close()
-                        
-                        # Exit the job
-                        raise Exception(error_msg)
-                except Exception as e:
-                    if "FATAL: VPN connection failed" in str(e):
-                        # Re-raise VPN fatal errors
-                        raise
-                    else:
-                        # Other errors - log but continue
+                # Skip switch on first batch if we just connected in the preamble
+                if batch_index == 1 and vpn_connected:
+                    print(f"[vote_start] First batch with fresh VPN connection, skipping immediate switch.")
+                else:
+                    vpn_switch_start = time.time()
+                    # print(f"[vote_start] Calling new_location()...")
+                    try:
+                        success = new_location()
                         vpn_switch_elapsed = time.time() - vpn_switch_start
-                        print(f"[vote_start] ERROR: VPN location switch failed after {vpn_switch_elapsed:.2f}s: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        # Continue anyway - might still work with current location
-                # print(f"[vote_start] new_location() completed")
+                        if success:
+                            print(f"[vote_start PERF] VPN location switch took {vpn_switch_elapsed:.2f}s")
+                        else:
+                            # All VPN retry attempts failed
+                            error_msg = f"FATAL: VPN connection failed after {vpn_switch_elapsed:.2f}s - all retry attempts exhausted"
+                            print(f"[vote_start] {error_msg}")
+                            
+                            # Update queue item status to failed
+                            if current_item_id:
+                                from app.db import SessionLocal
+                                from app.models import QueueItem, QueueStatus
+                                db = SessionLocal()
+                                try:
+                                    item = db.query(QueueItem).filter(QueueItem.id == current_item_id).first()
+                                    if item:
+                                        item.status = QueueStatus.canceled
+                                        item.current_status = error_msg
+                                        item.completed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                                        db.commit()
+                                        print(f"[vote_start] Updated queue item {current_item_id} status to canceled")
+                                finally:
+                                    db.close()
+                            
+                            # Exit the job
+                            raise Exception(error_msg)
+                    except Exception as e:
+                        if "FATAL: VPN connection failed" in str(e):
+                            # Re-raise VPN fatal errors
+                            raise
+                        else:
+                            # Other errors - log but continue
+                            vpn_switch_elapsed = time.time() - vpn_switch_start
+                            print(f"[vote_start] ERROR: VPN location switch failed after {vpn_switch_elapsed:.2f}s: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            # Continue anyway - might still work with current location
+                    # print(f"[vote_start] new_location() completed")
             
             # Run the voting threads
             if DEBUG_MODE:
