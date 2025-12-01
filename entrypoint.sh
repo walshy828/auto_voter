@@ -57,4 +57,13 @@ else
 fi
 
 echo "Starting application with command: $@"
-exec "$@"
+"$@"
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "Application crashed with exit code $EXIT_CODE"
+    # Sleep to prevent tight restart loop and allow log inspection
+    sleep 30
+fi
+
+exit $EXIT_CODE
