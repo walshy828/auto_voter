@@ -268,6 +268,15 @@ def connect_vpn():
         
         # Connect to smart location (reduced timeout)
         print("[VPN] Connecting to ExpressVPN...")
+        
+        # Enforce Network Lock OFF before connecting
+        try:
+            subprocess.run(['expressvpn', 'preferences', 'set', 'network_lock', 'off'], 
+                         capture_output=True, timeout=5, check=False)
+            print("[VPN] Enforced Network Lock: OFF")
+        except Exception as e:
+            print(f"[VPN] Warning: Failed to set network_lock off: {e}")
+
         try:
             result = subprocess.run(['expressvpn', 'connect', 'smart'], capture_output=True, text=True, timeout=15)
             if result.returncode == 0:
