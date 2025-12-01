@@ -173,6 +173,57 @@ def check_auto_switch_to_lazy(scheduler):
         db.close()
 
 
+def check_and_disconnect_idle_vpn():
+    """Disconnect VPN if system has been idle (no running/queued jobs) to save CPU."""
+    from app.models import QueueItem, QueueStatus
+    
+    db = SessionLocal()
+    try:
+        # Check if there are any running or queued items
+        active_count = db.query(QueueItem).filter(
+            QueueItem.status.in_([QueueStatus.queued, QueueStatus.running])
+        ).count()
+        
+        if active_count == 0:
+            # No active jobs, disconnect VPN to save CPU
+            print("[VPN Idle Check] No active jobs, disconnecting VPN to save CPU...")
+            try:
+                import subprocess
+                # Check if expressvpn command exists
+                try:
+                    subprocess.run(['which', 'expressvpn'], capture_output=True, timeout=2, check=True)
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+                    print("[VPN Idle Check] ExpressVPN not found, skipping")
+                    return
+                
+                # Check if connected first
+                result = subprocess.run(['expressvpn', 'status'], 
+                                      capture_output=True, text=True, timeout=3)
+                if 'Connected' in result.stdout:
+                    # Extract location for logging
+                    location = "Unknown"
+                    for line in result.stdout.split('\n'):
+                        if 'Connected to' in line:
+                            location = line.split('Connected to')[-1].strip()
+                            break
+                    print(f"[VPN Idle Check] Disconnecting from {location}...")
+                    subprocess.run(['expressvpn', 'disconnect'], 
+                                 capture_output=True, timeout=5)
+                    print("[VPN Idle Check] ✓ VPN disconnected successfully")
+                else:
+                    print("[VPN Idle Check] VPN already disconnected")
+            except subprocess.TimeoutExpired:
+                print("[VPN Idle Check] VPN command timed out")
+            except Exception as e:
+                print(f"[VPN Idle Check] Error disconnecting VPN: {e}")
+        else:
+            print(f"[VPN Idle Check] {active_count} active job(s), keeping VPN connected")
+    except Exception as e:
+        print(f"[VPN Idle Check] Error checking jobs: {e}")
+    finally:
+        db.close()
+
+
 def main():
     global current_queue_interval
     print("[Scheduler Service] Starting main()...")
@@ -200,6 +251,10 @@ def main():
         # Add auto-switch checker (checks every 5 minutes)
         sched.add_job(check_auto_switch_to_lazy, 'interval', minutes=5, args=[sched], id='auto_switch_checker')
         print("[Scheduler Service] Auto-switch checker added")
+        
+        # Add VPN idle checker (checks every 5 minutes to disconnect when idle)
+        sched.add_job(check_and_disconnect_idle_vpn, 'interval', minutes=5, id='vpn_idle_checker')
+        print("[Scheduler Service] VPN idle checker added (5 min interval)")
         
         print("[Scheduler Service] Starting scheduler loop...")
         sched.start()
