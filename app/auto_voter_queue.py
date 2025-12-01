@@ -385,6 +385,21 @@ def check_tor_bootstrap():
                 return True
             else:
                 print("[Tor Check] ✗ Tor is NOT fully bootstrapped yet")
+                # Print logs to help debug
+                print("--- Tor Notices Log ---")
+                try:
+                    with open('/var/log/tor/notices.log', 'r') as f:
+                        print(f.read())
+                except Exception as e:
+                    print(f"Could not read notices.log: {e}")
+                
+                print("--- Tor Stdout Log ---")
+                try:
+                    with open('/var/log/tor/tor.log', 'r') as f:
+                        print(f.read())
+                except Exception as e:
+                    print(f"Could not read tor.log: {e}")
+                print("-----------------------")
                 return False
     except Exception as e:
         print(f"[Tor Check] Error checking bootstrap status: {e}")
