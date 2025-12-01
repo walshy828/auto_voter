@@ -71,7 +71,8 @@ ControlPort ${TOR_CONTROL_PORT:-9051}
 HashedControlPassword $HASHED_PASSWORD
 CookieAuthentication 0
 DataDirectory /var/lib/tor
-Log notice file /var/log/tor/notices.log
+Log info file /var/log/tor/notices.log
+ClientOnly 1
 EOF
     
     # Create log directory
@@ -81,6 +82,18 @@ EOF
     # Ensure torrc is readable
     chmod 644 /etc/tor/torrc
     
+    # Verify network access for debian-tor user
+    echo "Verifying network access for debian-tor user..."
+    if su -s /bin/bash debian-tor -c "curl -s --connect-timeout 5 https://1.1.1.1 > /dev/null"; then
+        echo "✓ debian-tor user has internet access"
+    else
+        echo "✗ debian-tor user CANNOT reach internet (curl failed)"
+        echo "Debug: Checking routing table..."
+        ip route show
+        echo "Debug: Checking iptables..."
+        iptables -L -n -v
+    fi
+
     # Start Tor service in background as debian-tor user
     # We use su to drop privileges since we are running as root
     su -s /bin/bash debian-tor -c "tor -f /etc/tor/torrc > /var/log/tor/tor.log 2>&1 &"
