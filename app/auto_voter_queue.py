@@ -240,7 +240,8 @@ def update_queue_progress(item_id, votes_cast, votes_success, status):
             print(f"[DEBUG] Failed to update progress: {e}")
 
 def connect_vpn():
-    """Connect to ExpressVPN if not already connected."""
+    """Connect to ExpressVPN using random location from vpnloc list."""
+    global vpnlocat
     try:
         import subprocess
         # Check if expressvpn command exists first (quick check)
@@ -266,8 +267,13 @@ def connect_vpn():
             print("[VPN] Status check timed out")
             return False
         
-        # Connect to smart location (reduced timeout)
-        print("[VPN] Connecting to ExpressVPN...")
+        # Get random location from list
+        try:
+            location_alias = vpnloc[vpnlocat]["alias"]
+            print(f"[VPN] Connecting to random location: {location_alias}...")
+        except (IndexError, KeyError) as e:
+            print(f"[VPN] Error getting location from list: {e}, falling back to 'smart'")
+            location_alias = "smart"
         
         # Enforce Network Lock OFF before connecting
         try:
@@ -278,7 +284,8 @@ def connect_vpn():
             print(f"[VPN] Warning: Failed to set network_lock off: {e}")
 
         try:
-            result = subprocess.run(['expressvpn', 'connect', 'smart'], capture_output=True, text=True, timeout=15)
+            result = subprocess.run(['expressvpn', 'connect', location_alias], 
+                                  capture_output=True, text=True, timeout=15)
             if result.returncode == 0:
                 # Get the connected location
                 location = "Unknown"
