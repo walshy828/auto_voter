@@ -410,6 +410,7 @@ def test_tor_connectivity():
     except Exception as e:
         print(f"[Tor Check] ✗ Connectivity failed: {e}")
         return False
+def vote_start(start_mode):
     """
     Start the voting process.
     
