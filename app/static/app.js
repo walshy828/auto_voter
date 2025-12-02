@@ -1213,7 +1213,13 @@ function openLogStream(workerId) {
   const modal = document.getElementById('logModal');
   if (!modal) return;
   const pre = modal.querySelector('.modal-body pre');
+  const body = modal.querySelector('.modal-body'); // Scroll container
   pre.textContent = 'Connecting to worker ' + workerId + '...';
+
+  // Helper to scroll to bottom
+  const scrollToBottom = () => {
+    body.scrollTop = body.scrollHeight;
+  };
 
   // Try Socket.IO first
   if (socketConnected) {
@@ -1228,7 +1234,7 @@ function openLogStream(workerId) {
           pre.textContent = '';
         }
         pre.textContent += data.line + '\n';
-        pre.scrollTop = pre.scrollHeight;
+        scrollToBottom();
       }
     };
 
@@ -1254,7 +1260,7 @@ function openLogStream(workerId) {
     es.onmessage = function (e) {
       console.log(`[openLogStream] SSE message:`, e.data);
       pre.textContent += e.data + '\n';
-      pre.scrollTop = pre.scrollHeight;
+      scrollToBottom();
     };
     es.onerror = function () {
       console.error(`[openLogStream] SSE error`);
