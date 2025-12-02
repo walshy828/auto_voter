@@ -749,7 +749,13 @@ initializeSocketIO(); // start Socket.IO client
     await refreshWorkers();
     await refreshSchedulerStatus();
     await refreshPollSchedulerStatus();
-    await loadDaysToPurge();
+
+    // Load settings (non-critical, don't fail if not authenticated)
+    try {
+      await loadDaysToPurge();
+    } catch (e) {
+      console.log('Could not load days_to_purge (not critical):', e.message);
+    }
   } catch (e) {
     // If any fetch fails with 401, the login modal will already be shown by authedFetch
     console.log('Initial data fetch failed, login required');
