@@ -474,15 +474,22 @@ def vote_start(start_mode):
                 try:
                     item = db.query(QueueItem).filter(QueueItem.id == current_item_id).first()
                     if item and item.status == QueueStatus.paused:
+                        pause_start = time.time()
+                        last_log_time = time.time()
                         print(f"[vote_start] Item {current_item_id} is paused, waiting...")
                         # Wait in a loop checking every 5 seconds for resume
                         while True:
                             time.sleep(5)
                             db.refresh(item)
                             if item.status != QueueStatus.paused:
-                                print(f"[vote_start] Item {current_item_id} resumed, continuing...")
+                                pause_duration = time.time() - pause_start
+                                print(f"[vote_start] Item {current_item_id} resumed after {pause_duration:.1f}s")
                                 break
-                            print(f"[vote_start] Still paused, checking again...")
+                            # Only log every 60 seconds to avoid log spam
+                            if time.time() - last_log_time >= 60:
+                                pause_duration = time.time() - pause_start
+                                print(f"[vote_start] Still paused ({pause_duration:.0f}s elapsed)...")
+                                last_log_time = time.time()
                 finally:
                     db.close()
             

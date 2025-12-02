@@ -224,6 +224,76 @@ def check_and_disconnect_idle_vpn():
         db.close()
 
 
+def purge_old_data():
+    """
+    Purge old data based on the days_to_purge setting.
+    Deletes:
+    - Log files older than X days
+    - Polls older than X days
+    - Workers older than X days
+    - Queue items (completed/canceled/failed) older than X days
+    """
+    print("[Data Purge] Starting purge job...")
+    db = SessionLocal()
+    try:
+        from app.models import SystemSetting, Poll, WorkerProcess
+        from datetime import datetime, timedelta, timezone
+        
+        # Get retention setting (default 30 days)
+        setting = db.query(SystemSetting).filter(SystemSetting.key == 'days_to_purge').first()
+        if not setting:
+            # Create default setting if it doesn't exist
+            setting = SystemSetting(key='days_to_purge', value='30')
+            db.add(setting)
+            db.commit()
+            print("[Data Purge] Created default days_to_purge setting (30 days)")
+        
+        days = int(setting.value)
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+        print(f"[Data Purge] Retention period: {days} days (cutoff: {cutoff.strftime('%Y-%m-%d %H:%M:%S')})")
+        
+        # 1. Purge old log files
+        log_dir = os.environ.get('AUTO_VOTER_LOG_DIR', './data/logs')
+        deleted_logs = 0
+        if os.path.exists(log_dir):
+            for filename in os.listdir(log_dir):
+                filepath = os.path.join(log_dir, filename)
+                if os.path.isfile(filepath):
+                    try:
+                        mtime = datetime.fromtimestamp(os.path.getmtime(filepath), tz=timezone.utc).replace(tzinfo=None)
+                        if mtime < cutoff:
+                            os.remove(filepath)
+                            deleted_logs += 1
+                    except Exception as e:
+                        print(f"[Data Purge] Error deleting log file {filename}: {e}")
+        
+        # 2. Purge old polls
+        old_polls = db.query(Poll).filter(Poll.created_at < cutoff).delete(synchronize_session=False)
+        
+        # 3. Purge old workers (only those that have ended)
+        old_workers = db.query(WorkerProcess).filter(
+            WorkerProcess.end_time.isnot(None),
+            WorkerProcess.end_time < cutoff
+        ).delete(synchronize_session=False)
+        
+        # 4. Purge old queue items (completed, canceled, or failed)
+        old_queue = db.query(QueueItem).filter(
+            QueueItem.completed_at.isnot(None),
+            QueueItem.completed_at < cutoff,
+            QueueItem.status.in_([QueueStatus.completed, QueueStatus.canceled])
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        print(f"[Data Purge] ✓ Deleted: {deleted_logs} log files, {old_polls} polls, {old_workers} workers, {old_queue} queue items")
+    except Exception as e:
+        print(f"[Data Purge] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+    finally:
+        db.close()
+
+
 def reset_zombie_jobs():
     """
     Reset any jobs that are stuck in 'running' or 'paused' state on startup.
@@ -291,6 +361,10 @@ def main():
         # Add VPN idle checker (checks every 5 minutes to disconnect when idle)
         sched.add_job(check_and_disconnect_idle_vpn, 'interval', minutes=5, id='vpn_idle_checker')
         print("[Scheduler Service] VPN idle checker added (5 min interval)")
+        
+        # Add data purge job (runs daily at 3 AM)
+        sched.add_job(purge_old_data, 'cron', hour=3, minute=0, id='data_purge')
+        print("[Scheduler Service] Data purge job added (runs daily at 3:00 AM)")
         
         print("[Scheduler Service] Starting scheduler loop...")
         sched.start()

@@ -465,6 +465,12 @@ function attachQueueItemListeners(tr, it) {
     });
   };
 
+  // View Details button (for all items)
+  const btnDetails = el('button', { class: 'btn btn-sm btn-outline-info me-1' });
+  btnDetails.innerHTML = '<i class="bi bi-eye"></i>';
+  btnDetails.onclick = () => showQueueDetails(it.id);
+  addBtn(btnDetails);
+
   // Start button
   if (it.status === 'queued') {
     const btn = el('button', { class: 'btn btn-sm btn-primary me-1' }, 'Start');
@@ -743,6 +749,7 @@ initializeSocketIO(); // start Socket.IO client
     await refreshWorkers();
     await refreshSchedulerStatus();
     await refreshPollSchedulerStatus();
+    await loadDaysToPurge();
   } catch (e) {
     // If any fetch fails with 401, the login modal will already be shown by authedFetch
     console.log('Initial data fetch failed, login required');
@@ -973,7 +980,6 @@ document.getElementById('saveCredentials').addEventListener('click', async () =>
 });
 
 
-
 // Save Poll Scheduler Interval
 const btnSavePollSchedulerInterval = document.getElementById('btnSavePollSchedulerInterval');
 if (btnSavePollSchedulerInterval) {
@@ -995,6 +1001,38 @@ if (btnSavePollSchedulerInterval) {
       showToast('Failed to save interval: ' + e.message, 'danger');
     }
   });
+}
+
+// Days to purge setting
+const btnSaveDaysToPurge = document.getElementById('btnSaveDaysToPurge');
+if (btnSaveDaysToPurge) {
+  btnSaveDaysToPurge.addEventListener('click', async () => {
+    const days = document.getElementById('daysToPurgeInput').value;
+    try {
+      await authedFetch('/settings/days_to_purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: days })
+      });
+      showToast(`Data retention set to ${days} days`, 'success');
+    } catch (e) {
+      showToast('Failed to update retention: ' + e.message, 'danger');
+    }
+  });
+}
+
+// Load days_to_purge on page load
+async function loadDaysToPurge() {
+  try {
+    const response = await authedFetch('/settings/days_to_purge');
+    const data = await response.json();
+    const input = document.getElementById('daysToPurgeInput');
+    if (input && data.value) {
+      input.value = data.value;
+    }
+  } catch (e) {
+    console.log('Failed to load days_to_purge setting:', e);
+  }
 }
 
 // Refresh Poll Results Now
@@ -1581,3 +1619,127 @@ if (btnSaveEditPoll) {
     }
   });
 }
+
+
+// ===== Queue Details Modal =====
+
+async function showQueueDetails(itemId) {
+  try {
+    const response = await authedFetch(`/queue/${itemId}/details`);
+    const data = await response.json();
+
+    // Populate basic info
+    document.getElementById('detailsItemId').textContent = `#${data.id}`;
+    document.getElementById('detailsName').textContent = data.queue_name || '-';
+    document.getElementById('detailsStatus').innerHTML = statusToBadge(data.status);
+    document.getElementById('detailsPollId').textContent = data.pollid;
+    document.getElementById('detailsPollLink').href = `https://poll.fm/${data.pollid}`;
+    document.getElementById('detailsAnswerId').textContent = data.answerid;
+
+    // Populate settings
+    document.getElementById('detailsVotes').value = data.votes;
+    document.getElementById('detailsThreads').value = data.threads;
+    document.getElementById('detailsPerRun').value = data.per_run;
+    document.getElementById('detailsPause').value = data.pause;
+    document.getElementById('detailsUseVpn').checked = data.use_vpn;
+    document.getElementById('detailsUseTor').checked = data.use_tor;
+
+    // Reset to read-only mode
+    document.getElementById('detailsVotes').readOnly = true;
+    document.getElementById('detailsThreads').readOnly = true;
+    document.getElementById('detailsPerRun').readOnly = true;
+    document.getElementById('detailsPause').readOnly = true;
+    document.getElementById('detailsUseVpn').disabled = true;
+    document.getElementById('detailsUseTor').disabled = true;
+    document.getElementById('editButtons').style.display = 'none';
+
+    // Show edit button only for queued items
+    const btnEdit = document.getElementById('btnEditSettings');
+    if (data.status === 'queued') {
+      btnEdit.style.display = 'block';
+    } else {
+      btnEdit.style.display = 'none';
+    }
+
+    // Populate progress
+    document.getElementById('detailsVotesCast').textContent = (data.votes_cast || 0).toLocaleString();
+    document.getElementById('detailsVotesSuccess').textContent = (data.votes_success || 0).toLocaleString();
+    document.getElementById('detailsSuccessRate').textContent =
+      data.success_rate ? `${data.success_rate.toFixed(1)}%` : '0%';
+    document.getElementById('detailsCurrentStatus').textContent = data.current_status || '-';
+
+    // Populate timing
+    document.getElementById('detailsCreatedAt').textContent =
+      data.created_at ? new Date(data.created_at).toLocaleString() : '-';
+    document.getElementById('detailsStartedAt').textContent =
+      data.started_at ? new Date(data.started_at).toLocaleString() : '-';
+    document.getElementById('detailsCompletedAt').textContent =
+      data.completed_at ? new Date(data.completed_at).toLocaleString() : '-';
+
+    if (data.duration_seconds) {
+      const hours = Math.floor(data.duration_seconds / 3600);
+      const mins = Math.floor((data.duration_seconds % 3600) / 60);
+      const secs = Math.floor(data.duration_seconds % 60);
+      if (hours > 0) {
+        document.getElementById('detailsDuration').textContent = `${hours}h ${mins}m ${secs}s`;
+      } else {
+        document.getElementById('detailsDuration').textContent = `${mins}m ${secs}s`;
+      }
+    } else {
+      document.getElementById('detailsDuration').textContent = '-';
+    }
+
+    // Store item ID for editing
+    document.getElementById('queueDetailsModal').dataset.itemId = itemId;
+
+    // Show modal
+    new bootstrap.Modal(document.getElementById('queueDetailsModal')).show();
+  } catch (e) {
+    showToast('Failed to load details: ' + e.message, 'danger');
+  }
+}
+
+// Edit mode toggle
+document.getElementById('btnEditSettings').addEventListener('click', () => {
+  document.getElementById('detailsVotes').readOnly = false;
+  document.getElementById('detailsThreads').readOnly = false;
+  document.getElementById('detailsPerRun').readOnly = false;
+  document.getElementById('detailsPause').readOnly = false;
+  document.getElementById('detailsUseVpn').disabled = false;
+  document.getElementById('detailsUseTor').disabled = false;
+
+  document.getElementById('btnEditSettings').style.display = 'none';
+  document.getElementById('editButtons').style.display = 'block';
+});
+
+// Cancel edit
+document.getElementById('btnCancelEdit').addEventListener('click', () => {
+  const itemId = document.getElementById('queueDetailsModal').dataset.itemId;
+  showQueueDetails(itemId); // Reload original data
+});
+
+// Save changes
+document.getElementById('btnSaveSettings').addEventListener('click', async () => {
+  const itemId = document.getElementById('queueDetailsModal').dataset.itemId;
+
+  try {
+    await authedFetch(`/queue/${itemId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        votes: parseInt(document.getElementById('detailsVotes').value),
+        threads: parseInt(document.getElementById('detailsThreads').value),
+        per_run: parseInt(document.getElementById('detailsPerRun').value),
+        pause: parseInt(document.getElementById('detailsPause').value),
+        use_vpn: document.getElementById('detailsUseVpn').checked,
+        use_tor: document.getElementById('detailsUseTor').checked
+      })
+    });
+
+    showToast('Settings updated successfully', 'success');
+    bootstrap.Modal.getInstance(document.getElementById('queueDetailsModal')).hide();
+    refreshQueue();
+  } catch (e) {
+    showToast('Failed to save: ' + e.message, 'danger');
+  }
+});

@@ -228,6 +228,86 @@ def _scheduled_pick_and_start():
         db.close()
 
 
+@app.route('/queue/<int:item_id>/details', methods=['GET'])
+@require_auth
+def get_queue_item_details(item_id):
+    """Get detailed information about a queue item."""
+    db = SessionLocal()
+    try:
+        item = db.query(QueueItem).filter(QueueItem.id == item_id).first()
+        if not item:
+            return jsonify({'error': 'Item not found'}), 404
+        
+        # Calculate duration
+        duration = None
+        if item.started_at:
+            end_time = item.completed_at or datetime.now(timezone.utc).replace(tzinfo=None)
+            duration = (end_time - item.started_at).total_seconds()
+        
+        return jsonify({
+            'id': item.id,
+            'queue_name': item.queue_name,
+            'pollid': item.pollid,
+            'answerid': item.answerid,
+            'votes': item.votes,
+            'threads': item.threads,
+            'per_run': item.per_run,
+            'pause': item.pause,
+            'use_vpn': item.use_vpn,
+            'use_tor': item.use_tor,
+            'status': item.status.value,
+            'current_status': item.current_status,
+            'votes_cast': item.votes_cast,
+            'votes_success': item.votes_success,
+            'success_rate': item.success_rate,
+            'created_at': item.created_at.isoformat() if item.created_at else None,
+            'started_at': item.started_at.isoformat() if item.started_at else None,
+            'completed_at': item.completed_at.isoformat() if item.completed_at else None,
+            'duration_seconds': duration,
+            'worker_id': item.worker_id,
+            'pid': item.pid
+        })
+    finally:
+        db.close()
+
+
+@app.route('/queue/<int:item_id>', methods=['PATCH'])
+@require_auth
+def update_queue_item(item_id):
+    """Update queue item settings (only for queued items)."""
+    db = SessionLocal()
+    try:
+        item = db.query(QueueItem).filter(QueueItem.id == item_id).first()
+        if not item:
+            return jsonify({'error': 'Item not found'}), 404
+        
+        # Only allow editing queued items
+        if item.status != QueueStatus.queued:
+            return jsonify({'error': 'Can only edit queued items'}), 400
+        
+        data = request.json
+        
+        # Update allowed fields
+        if 'votes' in data:
+            item.votes = int(data['votes'])
+        if 'threads' in data:
+            item.threads = int(data['threads'])
+        if 'per_run' in data:
+            item.per_run = int(data['per_run'])
+        if 'pause' in data:
+            item.pause = int(data['pause'])
+        if 'use_vpn' in data:
+            item.use_vpn = bool(data['use_vpn'])
+        if 'use_tor' in data:
+            item.use_tor = bool(data['use_tor'])
+        
+        db.commit()
+        socketio.emit('queue_update', {'type': 'update', 'item_id': item_id})
+        return jsonify({'success': True})
+    finally:
+        db.close()
+
+
 # Only start scheduler in the main process to avoid duplicate runs under some servers
 _SCHEDULER_STARTED = False
 
