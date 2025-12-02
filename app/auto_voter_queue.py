@@ -91,6 +91,11 @@ vpn_votecnt = 0
 
 useragents = config.useragents  # better load it externally if large
 
+# VPN Blacklisting - track failed locations to avoid retrying them
+vpn_blacklist = set()  # Permanent blacklist for this session
+vpn_blacklist_timeout = {}  # Temporary blacklist with expiry times
+
+
 # --- Functions --- #
 def start():
     global pollid, answerid,start_totalToRun,num_threads, p2_PerRun,p2_pause,RunPerScript,cntToRun
@@ -404,6 +409,134 @@ def disconnect_vpn():
         print(f"[VPN] Error disconnecting after {elapsed:.2f}s: {e}")
         return False
 
+def is_location_blacklisted(location_alias):
+    """Check if a VPN location is blacklisted."""
+    global vpn_blacklist, vpn_blacklist_timeout
+    
+    # Permanent blacklist for this session
+    if location_alias in vpn_blacklist:
+        return True
+    
+    # Temporary blacklist (expires after 10 minutes)
+    if location_alias in vpn_blacklist_timeout:
+        if time.time() < vpn_blacklist_timeout[location_alias]:
+            return True
+        else:
+            del vpn_blacklist_timeout[location_alias]
+    
+    return False
+
+def blacklist_location(location_alias, permanent=False):
+    """Add a VPN location to the blacklist."""
+    global vpn_blacklist, vpn_blacklist_timeout
+    
+    if permanent:
+        vpn_blacklist.add(location_alias)
+        print(f"[VPN] Permanently blacklisted {location_alias} for this session")
+    else:
+        # Temporary blacklist for 10 minutes
+        vpn_blacklist_timeout[location_alias] = time.time() + 600
+        print(f"[VPN] Temporarily blacklisted {location_alias} for 10 minutes")
+
+def get_next_vpn_location(max_attempts=50):
+    """Get next non-blacklisted VPN location."""
+    global vpnlocat
+    attempts = 0
+    
+    while attempts < max_attempts:
+        vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+        location_alias = vpnloc[vpnlocat]["alias"]
+        
+        # Skip blacklisted locations
+        if is_location_blacklisted(location_alias):
+            attempts += 1
+            continue
+        
+        # If vpnmode == 1, ensure US location
+        if vpnmode == 1 and vpnloc[vpnlocat].get("loc") != "us":
+            attempts += 1
+            continue
+        
+        return location_alias
+    
+    # All locations blacklisted - clear temporary blacklist and try again
+    print("[VPN] All locations blacklisted, clearing temporary blacklist")
+    vpn_blacklist_timeout.clear()
+    return vpnloc[vpnlocat]["alias"]
+
+def is_vpn_connected():
+    """Quick check if VPN is currently connected."""
+    try:
+        result = subprocess.run(['expressvpn', 'status'], 
+                              capture_output=True, text=True, timeout=3)
+        return 'Connected' in result.stdout
+    except:
+        return False
+
+def emergency_vpn_reconnect():
+    """Emergency reconnect to any available VPN location."""
+    print("[VPN] EMERGENCY: Attempting to connect to any available location")
+    
+    # Try "smart" location first (ExpressVPN's automatic selection)
+    try:
+        result = subprocess.run(['expressvpn', 'connect', 'smart'], 
+                              capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            print("[VPN] Emergency reconnect successful (smart location)")
+            return True
+    except:
+        pass
+    
+    # Try first 5 non-blacklisted locations
+    for i in range(min(5, vpnloccnt + 1)):
+        location_alias = vpnloc[i]["alias"]
+        if is_location_blacklisted(location_alias):
+            continue
+        
+        try:
+            result = subprocess.run(['expressvpn', 'connect', location_alias], 
+                                  capture_output=True, text=True, timeout=20)
+            if result.returncode == 0:
+                print(f"[VPN] Emergency reconnect successful ({location_alias})")
+                return True
+        except:
+            continue
+    
+    print("[VPN] Emergency reconnect failed")
+    return False
+
+def new_location_with_fallback():
+    """
+    Try to switch VPN location, but don't fail the job if it doesn't work.
+    Returns: (success, should_continue)
+    - success: True if VPN switched successfully
+    - should_continue: Always True (we continue even if VPN switch failed)
+    """
+    try:
+        success = new_location()
+        if success:
+            return (True, True)
+        else:
+            print("[VPN] WARNING: VPN location switch failed, checking current connection status")
+            # Check if we're still connected
+            if is_vpn_connected():
+                print("[VPN] Still connected to previous location, continuing job")
+                return (False, True)
+            else:
+                print("[VPN] Not connected to any VPN, attempting emergency reconnect")
+                emergency_success = emergency_vpn_reconnect()
+                if emergency_success:
+                    print("[VPN] Emergency reconnect succeeded, continuing job")
+                else:
+                    print("[VPN] WARNING: Emergency reconnect failed, continuing job without VPN")
+                return (emergency_success, True)  # Continue either way
+    except Exception as e:
+        print(f"[VPN] Exception during location switch: {e}, continuing job anyway")
+        import traceback
+        traceback.print_exc()
+        return (False, True)
+
+
 def vote_start(start_mode):
     """
     Start the voting process.
@@ -535,46 +668,34 @@ def vote_start(start_mode):
                     print(f"[vote_start] First batch with fresh VPN connection, skipping immediate switch.")
                 else:
                     vpn_switch_start = time.time()
-                    # print(f"[vote_start] Calling new_location()...")
                     try:
-                        success = new_location()
+                        success, should_continue = new_location_with_fallback()
                         vpn_switch_elapsed = time.time() - vpn_switch_start
+                        
                         if success:
                             print(f"[vote_start PERF] VPN location switch took {vpn_switch_elapsed:.2f}s")
                         else:
-                            # All VPN retry attempts failed
-                            error_msg = f"FATAL: VPN connection failed after {vpn_switch_elapsed:.2f}s - all retry attempts exhausted"
-                            print(f"[vote_start] {error_msg}")
+                            print(f"[vote_start] WARNING: VPN switch failed after {vpn_switch_elapsed:.2f}s, continuing with current connection")
                             
-                            # Update queue item status to failed
+                            # Update queue item with warning status
                             if current_item_id:
-                                from app.db import SessionLocal
-                                from app.models import QueueItem, QueueStatus
-                                db = SessionLocal()
-                                try:
-                                    item = db.query(QueueItem).filter(QueueItem.id == current_item_id).first()
-                                    if item:
-                                        item.status = QueueStatus.canceled
-                                        item.current_status = error_msg
-                                        item.completed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-                                        db.commit()
-                                        print(f"[vote_start] Updated queue item {current_item_id} status to canceled")
-                                finally:
-                                    db.close()
-                            
-                            # Exit the job
-                            raise Exception(error_msg)
+                                update_queue_progress(
+                                    current_item_id,
+                                    total_ran_per_thread * num_threads,
+                                    count_good_value,
+                                    f"VPN switch failed, continuing anyway (batch {batch_index})"
+                                )
+                        
+                        # REMOVED: Fatal error and job termination
+                        # The job continues regardless of VPN switch success
+                        
                     except Exception as e:
-                        if "FATAL: VPN connection failed" in str(e):
-                            # Re-raise VPN fatal errors
-                            raise
-                        else:
-                            # Other errors - log but continue
-                            vpn_switch_elapsed = time.time() - vpn_switch_start
-                            print(f"[vote_start] ERROR: VPN location switch failed after {vpn_switch_elapsed:.2f}s: {e}")
-                            import traceback
-                            traceback.print_exc()
-                            # Continue anyway - might still work with current location
+                        vpn_switch_elapsed = time.time() - vpn_switch_start
+                        print(f"[vote_start] ERROR: VPN location switch exception after {vpn_switch_elapsed:.2f}s: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        # Continue anyway - don't let VPN issues stop the job
+
                     # print(f"[vote_start] new_location() completed")
             
             # Run the voting threads
@@ -691,12 +812,36 @@ def vote_start(start_mode):
         traceback.print_exc()
         raise
     finally:
+        # Save final progress before disconnecting
+        if current_item_id:
+            from app.db import SessionLocal
+            from app.models import QueueItem
+            db = SessionLocal()
+            try:
+                item = db.query(QueueItem).filter(QueueItem.id == current_item_id).first()
+                if item:
+                    # Ensure votes_cast is up to date
+                    # Calculate from total_ran_per_thread if available, otherwise use existing value
+                    try:
+                        WhereAt = total_ran_per_thread * num_threads
+                        item.votes_cast = WhereAt
+                        item.votes_success = count_good_value
+                        item.success_rate = (count_good_value / max(1, WhereAt)) * 100
+                        db.commit()
+                        print(f"[vote_start] Final progress saved: {count_good_value}/{WhereAt}")
+                    except NameError:
+                        # total_ran_per_thread not defined (early failure)
+                        print(f"[vote_start] Final progress: votes_cast={item.votes_cast}, votes_success={item.votes_success}")
+            finally:
+                db.close()
+        
         # Disconnect VPN if we connected it (but keep connected if using Tor)
         if use_vpn and not use_tor and vpn_connected:
             print("[vote_start] Job complete, disconnecting VPN...")
             disconnect_vpn()
         elif use_vpn and use_tor:
             print("[vote_start] Job complete, keeping VPN connected (Tor mode)")
+
 
 def print_debug(msg, levelofdetail=2):
 
@@ -732,57 +877,31 @@ def run_multi_scripts(times, run_count):
 
 def new_location():
     """
-    Switch to a new VPN location with retry logic.
-    Tries up to 3 different locations before giving up.
+    Switch to a new VPN location with improved retry logic and blacklisting.
+    Tries up to 5 different locations before giving up.
     Returns True if successful, False if all attempts failed.
     """
     global vpnlocat
-    max_retries = 3
+    max_retries = 5  # Increased from 3
     
     for attempt in range(max_retries):
         start_time = time.time()
         
+        # Get next non-blacklisted location
+        location_alias = get_next_vpn_location()
+        
         # Disconnect first
         disconnect_start = time.time()
-        try:
-            if not disconnect_vpn():
-                disconnect_elapsed = time.time() - disconnect_start
-                print(f"[VPN] Failed to disconnect after {disconnect_elapsed:.2f}s on attempt {attempt + 1}/{max_retries}")
-                
-                # Check if we should restart daemon
-                # Note: disconnect_vpn handles its own logging, but if it returned False, something went wrong.
-                # We'll rely on the retry loop to handle it.
-                
-                if attempt < max_retries - 1:
-                    print(f"[VPN] Retrying with next location...")
-                    vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
-                    continue
-                else:
-                    return False
-            disconnect_elapsed = time.time() - disconnect_start
-        except Exception as e:
-            disconnect_elapsed = time.time() - disconnect_start
-            print(f"[VPN] Error during disconnect after {disconnect_elapsed:.2f}s: {e}")
-            # Try to continue anyway
+        disconnect_success = disconnect_vpn()
+        disconnect_elapsed = time.time() - disconnect_start
         
-        # Increment location counter
-        vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+        if not disconnect_success:
+            print(f"[VPN] Disconnect failed after {disconnect_elapsed:.2f}s, continuing anyway")
         
-        if vpnmode == 1:
-            # Find next US location
-            start_index = vpnlocat
-            while True:
-                vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
-                if vpnloc[vpnlocat]["loc"] == "us":
-                    break
-                if vpnlocat == start_index:
-                    print("[VPN] Warning: No US locations found in config!")
-                    break
-
+        # Try to connect
         connect_start = time.time()
         try:
-            location_alias = vpnloc[vpnlocat]["alias"]
-            print(f"[VPN] Attempt {attempt + 1}/{max_retries}: Switching to location: {location_alias}...")
+            print(f"[VPN] Attempt {attempt + 1}/{max_retries}: Connecting to {location_alias}...")
             
             result = subprocess.run(['expressvpn', 'connect', location_alias], 
                                   capture_output=True, text=True, timeout=30)
@@ -799,7 +918,8 @@ def new_location():
                 print(f"[VPN] ✓ Switched to: {location} (disconnect: {disconnect_elapsed:.2f}s, connect: {connect_elapsed:.2f}s, total: {total_elapsed:.2f}s)")
                 return True
             else:
-                print(f"[VPN] Failed to switch to {location_alias} after {total_elapsed:.2f}s: {result.stderr}")
+                print(f"[VPN] Connection to {location_alias} failed: {result.stderr}")
+                blacklist_location(location_alias, permanent=False)
                 
                 # Check for daemon error
                 if "Cannot connect to expressvpnd daemon" in result.stderr or "expressvpnd daemon is not running" in result.stderr:
@@ -810,7 +930,7 @@ def new_location():
                         time.sleep(5)
                     except Exception as de:
                         print(f"[VPN] Failed to restart daemon: {de}")
-
+                
                 if attempt < max_retries - 1:
                     print(f"[VPN] Retrying with next location...")
                     continue
@@ -821,12 +941,11 @@ def new_location():
             connect_elapsed = time.time() - connect_start
             total_elapsed = time.time() - start_time
             print(f"[VPN] ERROR: Connection to {location_alias} timed out after {connect_elapsed:.2f}s (total: {total_elapsed:.2f}s)")
+            blacklist_location(location_alias, permanent=True)  # Permanent blacklist for timeouts
             
-            # Kill ONLY the hanging connect process, not the daemon
+            # Kill hanging process
             print("[VPN] Attempting to kill hanging VPN connection process...")
             try:
-                # Use pkill -f to match the full command line "expressvpn connect"
-                # This avoids killing the daemon "expressvpnd"
                 subprocess.run(['pkill', '-9', '-f', 'expressvpn connect'], timeout=5)
             except:
                 pass
@@ -839,7 +958,8 @@ def new_location():
                 
         except Exception as e:
             total_elapsed = time.time() - start_time
-            print(f"[VPN] Error switching to {location_alias} after {total_elapsed:.2f}s: {e}")
+            print(f"[VPN] Error connecting to {location_alias} after {total_elapsed:.2f}s: {e}")
+            blacklist_location(location_alias, permanent=False)
             import traceback
             traceback.print_exc()
             
@@ -850,6 +970,7 @@ def new_location():
                 return False
     
     return False
+
 
 def auto_voter(thread_id, RunCount):
     try:

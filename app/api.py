@@ -109,6 +109,13 @@ def load_user(user_id):
     db = SessionLocal()
     try:
         u = db.query(User).filter(User.id == int(user_id)).first()
+        if u:
+            # Force load attributes before session closes to prevent detached object issues
+            # This ensures Flask-Login can access these attributes after the session is closed
+            _ = u.id
+            _ = u.username
+            _ = u.password_hash
+            db.expunge(u)  # Detach from session so it can be used after session closes
         return u
     finally:
         db.close()
