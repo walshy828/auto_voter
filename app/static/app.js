@@ -1030,6 +1030,14 @@ if (btnSaveDaysToPurge) {
 // Load days_to_purge on page load
 async function loadDaysToPurge() {
   try {
+    // Only load if we have a session (check if other endpoints worked)
+    // This prevents showing login modal on initial page load
+    const token = sessionStorage.getItem('AUTO_VOTER_TOKEN');
+    if (!token) {
+      console.log('Skipping days_to_purge load - not authenticated yet');
+      return;
+    }
+
     const response = await authedFetch('/settings/days_to_purge');
     const data = await response.json();
     const input = document.getElementById('daysToPurgeInput');
