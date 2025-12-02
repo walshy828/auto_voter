@@ -1723,12 +1723,15 @@ async function showQueueDetails(itemId) {
     document.getElementById('detailsUseTor').disabled = true;
     document.getElementById('editButtons').style.display = 'none';
 
-    // Show edit button only for queued items
+    // Show edit button for queued or paused items
     const btnEdit = document.getElementById('btnEditSettings');
-    if (data.status === 'queued') {
+    if (data.status === 'queued' || data.status === 'paused') {
       btnEdit.style.display = 'block';
+      // Store status for edit logic
+      document.getElementById('queueDetailsModal').dataset.status = data.status;
     } else {
       btnEdit.style.display = 'none';
+      delete document.getElementById('queueDetailsModal').dataset.status;
     }
 
     // Populate progress
@@ -1770,13 +1773,23 @@ async function showQueueDetails(itemId) {
 }
 
 // Edit mode toggle
+// Edit mode toggle
 document.getElementById('btnEditSettings').addEventListener('click', () => {
-  document.getElementById('detailsVotes').readOnly = false;
-  document.getElementById('detailsThreads').readOnly = false;
-  document.getElementById('detailsPerRun').readOnly = false;
-  document.getElementById('detailsPause').readOnly = false;
-  document.getElementById('detailsUseVpn').disabled = false;
-  document.getElementById('detailsUseTor').disabled = false;
+  const status = document.getElementById('queueDetailsModal').dataset.status;
+
+  if (status === 'paused') {
+    // For paused items, only allow editing per_run and pause
+    document.getElementById('detailsPerRun').readOnly = false;
+    document.getElementById('detailsPause').readOnly = false;
+  } else {
+    // For queued items, allow editing everything
+    document.getElementById('detailsVotes').readOnly = false;
+    document.getElementById('detailsThreads').readOnly = false;
+    document.getElementById('detailsPerRun').readOnly = false;
+    document.getElementById('detailsPause').readOnly = false;
+    document.getElementById('detailsUseVpn').disabled = false;
+    document.getElementById('detailsUseTor').disabled = false;
+  }
 
   document.getElementById('btnEditSettings').style.display = 'none';
   document.getElementById('editButtons').style.display = 'block';

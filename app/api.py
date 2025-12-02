@@ -288,25 +288,32 @@ def update_queue_item(item_id):
         if not item:
             return jsonify({'error': 'Item not found'}), 404
         
-        # Only allow editing queued items
-        if item.status != QueueStatus.queued:
-            return jsonify({'error': 'Can only edit queued items'}), 400
+        # Allow editing queued or paused items
+        if item.status not in [QueueStatus.queued, QueueStatus.paused]:
+            return jsonify({'error': 'Can only edit queued or paused items'}), 400
         
         data = request.json
         
-        # Update allowed fields
-        if 'votes' in data:
-            item.votes = int(data['votes'])
-        if 'threads' in data:
-            item.threads = int(data['threads'])
-        if 'per_run' in data:
-            item.per_run = int(data['per_run'])
-        if 'pause' in data:
-            item.pause = int(data['pause'])
-        if 'use_vpn' in data:
-            item.use_vpn = bool(data['use_vpn'])
-        if 'use_tor' in data:
-            item.use_tor = bool(data['use_tor'])
+        # For paused items, only allow updating per_run and pause
+        if item.status == QueueStatus.paused:
+            if 'per_run' in data:
+                item.per_run = int(data['per_run'])
+            if 'pause' in data:
+                item.pause = int(data['pause'])
+        else:
+            # For queued items, allow updating all fields
+            if 'votes' in data:
+                item.votes = int(data['votes'])
+            if 'threads' in data:
+                item.threads = int(data['threads'])
+            if 'per_run' in data:
+                item.per_run = int(data['per_run'])
+            if 'pause' in data:
+                item.pause = int(data['pause'])
+            if 'use_vpn' in data:
+                item.use_vpn = bool(data['use_vpn'])
+            if 'use_tor' in data:
+                item.use_tor = bool(data['use_tor'])
         
         db.commit()
         socketio.emit('queue_update', {'type': 'update', 'item_id': item_id})
