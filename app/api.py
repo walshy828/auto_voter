@@ -895,24 +895,45 @@ def set_days_to_purge():
 @require_auth
 def list_polls():
     db = SessionLocal()
-    polls = db.query(Poll).order_by(Poll.created_at.desc()).all()
-    out = [{
-        'id': p.id, 
-        'entryname': p.entryname, 
-        'pollid': p.pollid, 
-        'answerid': p.answerid, 
-        'use_tor': p.use_tor, 
-        'created_at': to_est_string(p.created_at),
-        'status': p.status,
-        'poll_title': p.poll_title,
-        'total_poll_votes': p.total_poll_votes,
-        'total_votes': p.total_votes,
-        'current_place': p.current_place,
-        'votes_behind_first': p.votes_behind_first,
-        'last_snapshot_at': to_est_string(p.last_snapshot_at)
-    } for p in polls]
-    db.close()
-    return jsonify(out)
+    try:
+        polls = db.query(Poll).order_by(Poll.created_at.desc()).all()
+        out = []
+        for p in polls:
+            # Calculate trend
+            # Get last 2 snapshots for this poll
+            from app.models import PollSnapshot
+            snapshots = db.query(PollSnapshot).filter(
+                PollSnapshot.poll_id == p.id
+            ).order_by(PollSnapshot.updated_at.desc()).limit(2).all()
+            
+            trend = 0
+            if len(snapshots) >= 2:
+                current = snapshots[0].place
+                previous = snapshots[1].place
+                if current is not None and previous is not None:
+                    # Trend: Positive means improved (rank number got smaller)
+                    # e.g. Prev 5, Curr 3 => 5 - 3 = +2 (Improved by 2 spots)
+                    trend = previous - current
+            
+            out.append({
+                'id': p.id, 
+                'entryname': p.entryname, 
+                'pollid': p.pollid, 
+                'answerid': p.answerid, 
+                'use_tor': p.use_tor, 
+                'created_at': to_est_string(p.created_at),
+                'status': p.status,
+                'poll_title': p.poll_title,
+                'total_poll_votes': p.total_poll_votes,
+                'total_votes': p.total_votes,
+                'current_place': p.current_place,
+                'votes_behind_first': p.votes_behind_first,
+                'last_snapshot_at': to_est_string(p.last_snapshot_at),
+                'trend': trend
+            })
+        return jsonify(out)
+    finally:
+        db.close()
 
 
 @app.route('/polls/<int:poll_id>', methods=['DELETE'])

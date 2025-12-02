@@ -69,6 +69,13 @@ async function refreshPolls() {
 
   const sel = document.getElementById('pollSelect');
   const tbody = document.querySelector('#pollsTable tbody');
+
+  // Dispose of existing tooltips
+  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+    const tooltip = bootstrap.Tooltip.getInstance(el);
+    if (tooltip) tooltip.dispose();
+  });
+
   sel.innerHTML = '<option value="">-- choose existing poll or enter manually --</option>';
   tbody.innerHTML = '';
 
@@ -80,12 +87,22 @@ async function refreshPolls() {
   polls.forEach(p => {
     // table row
     const tr = document.createElement('tr');
+    let trendIcon = '';
+    if (p.trend > 0) {
+      trendIcon = `<i class="bi bi-arrow-up-short text-success fs-5" data-bs-toggle="tooltip" title="Improved by ${p.trend}"></i>`;
+    } else if (p.trend < 0) {
+      trendIcon = `<i class="bi bi-arrow-down-short text-danger fs-5" data-bs-toggle="tooltip" title="Dropped by ${Math.abs(p.trend)}"></i>`;
+    } else {
+      trendIcon = `<i class="bi bi-dash text-muted" data-bs-toggle="tooltip" title="No change"></i>`;
+    }
+
     const stats = p.total_votes && p.total_poll_votes
       ? `<div class="small">
            <strong>${p.total_votes.toLocaleString()}</strong> / ${p.total_poll_votes.toLocaleString()}
          </div>
-         <div class="small ${p.current_place === 1 ? 'text-success fw-bold' : 'text-danger'}">
+         <div class="small ${p.current_place === 1 ? 'text-success fw-bold' : 'text-danger'} d-flex align-items-center gap-1">
            [${p.current_place || '?'}:${p.votes_behind_first || 0}]
+           ${trendIcon}
          </div>`
       : '<span class="text-muted">-</span>';
 
@@ -270,6 +287,9 @@ async function refreshPolls() {
       await openEditPollModal(id);
     });
   });
+
+  // Initialize tooltips
+  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
 
   recentPolls.forEach(p => {
     const opt = el('option', { value: p.id }, `${p.entryname} — ${p.pollid}`);
