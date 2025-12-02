@@ -1624,9 +1624,17 @@ if (btnSaveEditPoll) {
 // ===== Queue Details Modal =====
 
 async function showQueueDetails(itemId) {
+  console.log('[showQueueDetails] Opening details for item:', itemId);
   try {
     const response = await authedFetch(`/queue/${itemId}/details`);
+    console.log('[showQueueDetails] Response status:', response.status);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
     const data = await response.json();
+    console.log('[showQueueDetails] Data received:', data);
 
     // Populate basic info
     document.getElementById('detailsItemId').textContent = `#${data.id}`;

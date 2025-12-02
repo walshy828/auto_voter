@@ -303,11 +303,19 @@ def update_queue_item(item_id):
         
         db.commit()
         socketio.emit('queue_update', {'type': 'update', 'item_id': item_id})
+        setting = db.query(SystemSetting).filter(SystemSetting.key == 'days_to_purge').first()
+        if not setting:
+            setting = SystemSetting(key='days_to_purge', value=str(data['value']))
+            db.add(setting)
+        else:
+            setting.value = str(data['value'])
+        db.commit()
         return jsonify({'success': True})
     finally:
         db.close()
 
 
+# ===== SCHEDULER =====
 # Only start scheduler in the main process to avoid duplicate runs under some servers
 _SCHEDULER_STARTED = False
 
@@ -829,6 +837,42 @@ def auto_switch_settings():
             setting = db.query(SystemSetting).filter(SystemSetting.key == 'auto_switch_to_lazy').first()
             enabled = setting.value == 'true' if setting else False
             return jsonify({'enabled': enabled})
+    finally:
+        db.close()
+
+
+@app.route('/settings/days_to_purge', methods=['GET'])
+@require_auth
+def get_days_to_purge():
+    """Get data retention setting."""
+    db = SessionLocal()
+    try:
+        setting = db.query(SystemSetting).filter(SystemSetting.key == 'days_to_purge').first()
+        if not setting:
+            # Create default if doesn't exist
+            setting = SystemSetting(key='days_to_purge', value='30')
+            db.add(setting)
+            db.commit()
+        return jsonify({'value': setting.value})
+    finally:
+        db.close()
+
+
+@app.route('/settings/days_to_purge', methods=['POST'])
+@require_auth
+def set_days_to_purge():
+    """Set data retention setting."""
+    db = SessionLocal()
+    try:
+        data = request.json
+        setting = db.query(SystemSetting).filter(SystemSetting.key == 'days_to_purge').first()
+        if not setting:
+            setting = SystemSetting(key='days_to_purge', value=str(data['value']))
+            db.add(setting)
+        else:
+            setting.value = str(data['value'])
+        db.commit()
+        return jsonify({'success': True})
     finally:
         db.close()
 

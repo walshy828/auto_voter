@@ -458,7 +458,26 @@ def vote_start(start_mode):
         # Note: RunPerScript = start_totalToRun // num_threads
         # We will run until we hit this target per thread
         
+        # Resume from where we left off if this is a resumed job
         total_ran_per_thread = 0
+        if current_item_id:
+            from app.db import SessionLocal
+            from app.models import QueueItem
+            db = SessionLocal()
+            try:
+                item = db.query(QueueItem).filter(QueueItem.id == current_item_id).first()
+                if item and item.votes_cast:
+                    # Calculate how many votes per thread have already been cast
+                    # votes_cast is the total across all threads
+                    # total_ran_per_thread is per thread
+                    if num_threads > 0:
+                        total_ran_per_thread = item.votes_cast // num_threads
+                        print(f"[vote_start] Resuming from batch: {total_ran_per_thread} votes already cast per thread (total: {item.votes_cast})")
+                    else:
+                        total_ran_per_thread = 0
+            finally:
+                db.close()
+        
         batch_index = 0
         
         # print(f"[vote_start] Entering batch loop. RunPerScript={RunPerScript}")
