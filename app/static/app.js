@@ -342,6 +342,13 @@ async function refreshQueue() {
   updatePaginationControls(totalItems, totalPages);
 
   const tbody = document.querySelector('#queueTable tbody');
+
+  // Dispose of existing tooltips to prevent artifacts
+  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+    const tooltip = bootstrap.Tooltip.getInstance(el);
+    if (tooltip) tooltip.dispose();
+  });
+
   tbody.innerHTML = '';
 
   // Responsive view: Table rows for desktop, Cards for mobile (handled via CSS classes)
