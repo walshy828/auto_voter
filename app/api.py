@@ -248,7 +248,7 @@ def get_queue_item_details(item_id):
         # Calculate duration
         duration = None
         if item.started_at:
-            end_time = item.completed_at or datetime.now(timezone.utc).replace(tzinfo=None)
+            end_time = item.completed_at or datetime.datetime.now(timezone.utc).replace(tzinfo=None)
             duration = (end_time - item.started_at).total_seconds()
         
         return jsonify({

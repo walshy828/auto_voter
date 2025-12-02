@@ -459,21 +459,33 @@ function attachQueueItemListeners(tr, it) {
   // Helper to add buttons to both mobile and desktop containers
   const addBtn = (btn) => {
     tr.querySelectorAll('.action-buttons').forEach(container => {
-      container.appendChild(btn.cloneNode(true));
+      const clone = btn.cloneNode(true);
+      container.appendChild(clone);
       // Re-attach listener to the clone
-      container.lastChild.addEventListener('click', btn.onclick);
+      clone.addEventListener('click', btn.onclick);
+      // Initialize tooltip
+      new bootstrap.Tooltip(clone);
     });
   };
 
   // View Details button (for all items)
-  const btnDetails = el('button', { class: 'btn btn-sm btn-outline-info me-1' });
+  const btnDetails = el('button', {
+    class: 'btn btn-sm btn-outline-info me-1',
+    'data-bs-toggle': 'tooltip',
+    'title': 'View Details'
+  });
   btnDetails.innerHTML = '<i class="bi bi-eye"></i>';
   btnDetails.onclick = () => showQueueDetails(it.id);
   addBtn(btnDetails);
 
   // Start button
   if (it.status === 'queued') {
-    const btn = el('button', { class: 'btn btn-sm btn-primary me-1' }, 'Start');
+    const btn = el('button', {
+      class: 'btn btn-sm btn-primary me-1',
+      'data-bs-toggle': 'tooltip',
+      'title': 'Start Job'
+    });
+    btn.innerHTML = '<i class="bi bi-play-fill"></i>';
     btn.onclick = async () => {
       await authedFetch(`/queue/${it.id}/start`, { method: 'POST' });
       showToast('Started job #' + it.id, 'success');
@@ -484,7 +496,12 @@ function attachQueueItemListeners(tr, it) {
 
   // View Logs button
   if (it.status === 'running' && it.worker_id) {
-    const btn = el('button', { class: 'btn btn-sm btn-info me-1' }, 'Logs');
+    const btn = el('button', {
+      class: 'btn btn-sm btn-info me-1',
+      'data-bs-toggle': 'tooltip',
+      'title': 'View Logs'
+    });
+    btn.innerHTML = '<i class="bi bi-file-text"></i>';
     btn.onclick = () => {
       showLogModal(it.worker_id, 'Connecting to log stream...');
       openLogStream(it.worker_id);
@@ -494,8 +511,12 @@ function attachQueueItemListeners(tr, it) {
 
   // Pause button (for running items)
   if (it.status === 'running') {
-    const btn = el('button', { class: 'btn btn-sm btn-warning me-1' });
-    btn.innerHTML = '<i class="bi bi-pause-fill"></i> Pause';
+    const btn = el('button', {
+      class: 'btn btn-sm btn-warning me-1',
+      'data-bs-toggle': 'tooltip',
+      'title': 'Pause Job'
+    });
+    btn.innerHTML = '<i class="bi bi-pause-fill"></i>';
     btn.onclick = async () => {
       await authedFetch(`/queue/${it.id}/pause`, { method: 'POST' });
       showToast('Paused job #' + it.id, 'warning');
@@ -506,8 +527,12 @@ function attachQueueItemListeners(tr, it) {
 
   // Resume button (for paused items)
   if (it.status === 'paused') {
-    const btn = el('button', { class: 'btn btn-sm btn-success me-1' });
-    btn.innerHTML = '<i class="bi bi-play-fill"></i> Resume';
+    const btn = el('button', {
+      class: 'btn btn-sm btn-success me-1',
+      'data-bs-toggle': 'tooltip',
+      'title': 'Resume Job'
+    });
+    btn.innerHTML = '<i class="bi bi-play-fill"></i>';
     btn.onclick = async () => {
       await authedFetch(`/queue/${it.id}/resume`, { method: 'POST' });
       showToast('Resumed job #' + it.id, 'success');
@@ -518,7 +543,12 @@ function attachQueueItemListeners(tr, it) {
 
   // Cancel button
   if (it.status === 'queued' || it.status === 'running' || it.status === 'paused') {
-    const btn = el('button', { class: 'btn btn-sm btn-danger' }, 'Cancel');
+    const btn = el('button', {
+      class: 'btn btn-sm btn-danger',
+      'data-bs-toggle': 'tooltip',
+      'title': 'Cancel Job'
+    });
+    btn.innerHTML = '<i class="bi bi-x-lg"></i>';
     btn.onclick = async () => {
       await authedFetch(`/queue/${it.id}/cancel`, { method: 'POST' });
       showToast('Canceled job #' + it.id, 'warning');
@@ -529,7 +559,12 @@ function attachQueueItemListeners(tr, it) {
 
   // Run Again button
   if (it.status === 'completed' || it.status === 'canceled') {
-    const btn = el('button', { class: 'btn btn-sm btn-secondary' }, 'Run Again');
+    const btn = el('button', {
+      class: 'btn btn-sm btn-secondary',
+      'data-bs-toggle': 'tooltip',
+      'title': 'Run Again'
+    });
+    btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
     btn.onclick = async () => {
       if (confirm(`Run job #${it.id} again?`)) {
         await authedFetch(`/queue/${it.id}/retry`, { method: 'POST' });
