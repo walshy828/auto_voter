@@ -1226,12 +1226,14 @@ function openLogStream(workerId) {
     console.log(`[openLogStream] Setting up log_line listener FIRST for worker ${workerId}`);
 
     // Set up listener BEFORE subscribing (so we don't miss messages)
+    let isFirstLine = true;
     const logLineHandler = (data) => {
       console.log(`[openLogStream] Received log_line:`, data);
       if (data && data.line) {
         // Only replace "Connecting..." on first line
-        if (pre.textContent.includes('Connecting')) {
+        if (isFirstLine) {
           pre.textContent = '';
+          isFirstLine = false;
         }
         pre.textContent += data.line + '\n';
         scrollToBottom();
