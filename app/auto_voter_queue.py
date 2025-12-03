@@ -626,7 +626,12 @@ def vote_start(start_mode):
                     # total_ran_per_thread is per thread
                     if num_threads > 0:
                         total_ran_per_thread = item.votes_cast // num_threads
-                        print(f"[vote_start] Resuming from batch: {total_ran_per_thread} votes already cast per thread (total: {item.votes_cast})")
+                        
+                        # Restore success count
+                        if item.votes_success:
+                            count_good_value = item.votes_success
+                            
+                        print(f"[vote_start] Resuming from batch: {total_ran_per_thread} votes already cast per thread (total: {item.votes_cast}, success: {count_good_value})")
                     else:
                         total_ran_per_thread = 0
             finally:
