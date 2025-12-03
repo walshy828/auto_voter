@@ -3,6 +3,8 @@ Run this in a separate process (supervisord/systemd or a separate container) to 
 """
 import os
 import time
+import fcntl
+import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from app.db import SessionLocal, init_db
 from app.models import QueueItem, QueueStatus, PollSchedulerConfig
@@ -15,37 +17,73 @@ print("[Scheduler Service] Database initialized")
 
 
 def pick_and_start():
-    """Pick and start queued voting items."""
-    print("[Scheduler Service] pick_and_start() called")
-    db = SessionLocal()
-    try:
-        # Check if workers are paused
-        from app.models import SystemSetting
-        paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
-        if paused_setting and paused_setting.value == 'true':
-            # Workers are paused, skip processing
-            print("[Scheduler Service] Workers are paused, skipping queue processing")
-            return
-        
-        print("[Scheduler Service] Checking for queued items...")
-        it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
-        if it:
-            print(f"[Scheduler Service] Found queued item {it.id}, attempting to start...")
+    """Pick and start queued voting items with locking and max worker check."""
+    # Use a file lock to prevent race conditions
+    db_path = os.environ.get('AUTO_VOTER_DB', './data/auto_voter.db').replace('sqlite:///', '')
+    lock_path = os.path.join(os.path.dirname(db_path), 'scheduler.lock')
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+
+    with open(lock_path, 'w') as lock_file:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            
+            print("[Scheduler Service] pick_and_start() called (Locked)")
+            db = SessionLocal()
             try:
-                start_queue_item_background(it.id)
-                print(f"[Scheduler Service] Successfully started item {it.id}")
-            except Exception as e:
-                print(f"[Scheduler Service] Failed to start queued item {it.id}: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print("[Scheduler Service] No queued items found")
-    except Exception as e:
-        print(f"[Scheduler Service] Error in pick_and_start: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        db.close()
+                # Check if workers are paused
+                from app.models import SystemSetting
+                paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
+                if paused_setting and paused_setting.value == 'true':
+                    print("[Scheduler Service] Workers are paused, skipping queue processing")
+                    return
+                
+                # 1. Check for scheduled jobs whose time has arrived
+                now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                scheduled_items = db.query(QueueItem).filter(
+                    QueueItem.status == QueueStatus.scheduled,
+                    QueueItem.scheduled_at <= now
+                ).all()
+                
+                for item in scheduled_items:
+                    print(f"[Scheduler Service] Transitioning scheduled item {item.id} to queued")
+                    item.status = QueueStatus.queued
+                    db.commit()
+
+                # 2. Check max concurrent workers
+                max_workers_setting = db.query(SystemSetting).filter(SystemSetting.key == 'max_concurrent_workers').first()
+                try:
+                    max_workers = int(max_workers_setting.value) if max_workers_setting and max_workers_setting.value else 1
+                except:
+                    max_workers = 1
+                
+                running_count = db.query(QueueItem).filter(QueueItem.status == QueueStatus.running).count()
+                
+                if running_count >= max_workers:
+                    print(f"[Scheduler Service] Max concurrent workers reached ({running_count}/{max_workers}). Waiting...")
+                    return
+
+                # 3. Pick and start
+                print("[Scheduler Service] Checking for queued items...")
+                it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
+                if it:
+                    print(f"[Scheduler Service] Found queued item {it.id}, attempting to start...")
+                    try:
+                        start_queue_item_background(it.id)
+                        print(f"[Scheduler Service] Successfully started item {it.id}")
+                    except Exception as e:
+                        print(f"[Scheduler Service] Failed to start queued item {it.id}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print("[Scheduler Service] No queued items found")
+            finally:
+                db.close()
+            
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+        except Exception as e:
+            print(f"[Scheduler Service] Error in pick_and_start: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 def run_poll_results_scheduler():
