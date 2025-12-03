@@ -321,7 +321,7 @@ def connect_vpn():
         connect_start = time.time()
         try:
             result = subprocess.run(['expressvpn', 'connect', location_alias], 
-                                  capture_output=True, text=True, timeout=15)
+                                  capture_output=True, text=True, timeout=45)
             connect_elapsed = time.time() - connect_start
             
             if result.returncode == 0:
@@ -377,7 +377,7 @@ def disconnect_vpn():
         # Disconnect
         print("[VPN] Disconnecting from ExpressVPN...")
         try:
-            result = subprocess.run(['expressvpn', 'disconnect'], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(['expressvpn', 'disconnect'], capture_output=True, text=True, timeout=15)
             disconnect_elapsed = time.time() - start_time
             
             if result.returncode == 0 or 'Not connected' in result.stdout:
@@ -904,7 +904,7 @@ def new_location():
             print(f"[VPN] Attempt {attempt + 1}/{max_retries}: Connecting to {location_alias}...")
             
             result = subprocess.run(['expressvpn', 'connect', location_alias], 
-                                  capture_output=True, text=True, timeout=30)
+                                  capture_output=True, text=True, timeout=45)
             connect_elapsed = time.time() - connect_start
             total_elapsed = time.time() - start_time
             

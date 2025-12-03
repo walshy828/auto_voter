@@ -199,54 +199,67 @@ def _get_scheduler_interval():
 
 
 
-def _scheduled_pick_and_start():
-    print("[SCHEDULER] Checking for queued items...")
-    db = SessionLocal()
-    try:
-        # Check if workers are paused
-        from app.models import SystemSetting
-        paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
-        if paused_setting and paused_setting.value == 'true':
-            print("[SCHEDULER] Workers are paused, skipping queue processing")
-            return
-        
-        # 1. Check for scheduled jobs whose time has arrived
-        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-        scheduled_items = db.query(QueueItem).filter(
-            QueueItem.status == QueueStatus.scheduled,
-            QueueItem.scheduled_at <= now
-        ).all()
-        
-        for item in scheduled_items:
-            print(f"[SCHEDULER] Transitioning scheduled item {item.id} to queued (scheduled time reached)")
-            item.status = QueueStatus.queued
-            db.commit()
-            socketio.emit('queue_update', {'type': 'status', 'item_id': item.id, 'status': 'queued'})
-        
-        # 2. Check current running workers
-        running_count = db.query(QueueItem).filter(QueueItem.status == QueueStatus.running).count()
-        max_workers = _get_max_concurrent_workers()
-        
-        if running_count >= max_workers:
-            print(f"[SCHEDULER] Max concurrent workers reached ({running_count}/{max_workers}). Waiting...")
-            return
+import fcntl
 
-        # 3. Pick the next queued item
-        it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
-        if it:
-            print(f"[SCHEDULER] Found queued item {it.id}, attempting to start...")
+def _scheduled_pick_and_start():
+    # Use a file lock to prevent race conditions between web (manual start) and scheduler processes
+    # This ensures that checking running_count and starting a job is atomic across processes
+    db_path = os.environ.get('AUTO_VOTER_DB', './data/auto_voter.db').replace('sqlite:///', '')
+    lock_path = os.path.join(os.path.dirname(db_path), 'scheduler.lock')
+    
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    
+    with open(lock_path, 'w') as lock_file:
+        try:
+            # Acquire exclusive lock (blocking)
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            
+            print("[SCHEDULER] Checking for queued items...")
+            db = SessionLocal()
             try:
-                start_queue_item_background(it.id, socketio=socketio)
-                print(f"[SCHEDULER] Successfully started item {it.id}")
-                socketio.emit('queue_update', {'type': 'start', 'item_id': it.id})
-            except Exception as e:
-                print(f"[SCHEDULER] Failed to start queued item {it.id}: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print("[SCHEDULER] No queued items found")
-    finally:
-        db.close()
+                # Check if workers are paused
+                from app.models import SystemSetting
+                paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
+                if paused_setting and paused_setting.value == 'true':
+                    print("[SCHEDULER] Workers are paused, skipping queue processing")
+                    return
+                
+                # 1. Check for scheduled jobs whose time has arrived
+                now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                scheduled_items = db.query(QueueItem).filter(
+                    QueueItem.status == QueueStatus.scheduled,
+                    QueueItem.scheduled_at <= now
+                ).all()
+                
+                for item in scheduled_items:
+                    print(f"[SCHEDULER] Transitioning scheduled item {item.id} to queued (scheduled time reached)")
+                    item.status = QueueStatus.queued
+                    db.commit()
+                    socketio.emit('queue_update', {'type': 'status', 'item_id': item.id, 'status': 'queued'})
+                
+                # 2. Check current running workers
+                running_count = db.query(QueueItem).filter(QueueItem.status == QueueStatus.running).count()
+                max_workers = _get_max_concurrent_workers()
+                
+                if running_count >= max_workers:
+                    print(f"[SCHEDULER] Max concurrent workers reached ({running_count}/{max_workers}). Waiting...")
+                    return
+
+                # 3. Pick the next queued item
+                it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
+                if it:
+                    print(f"[SCHEDULER] Found queued item {it.id}, attempting to start...")
+                    try:
+                        start_queue_item_background(it.id, socketio=socketio)
+                        print(f"[SCHEDULER] Successfully started item {it.id}")
+                    except Exception as e:
+                        print(f"[SCHEDULER] Failed to start item {it.id}: {e}")
+            finally:
+                db.close()
+        finally:
+            # Release lock
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 @app.route('/queue/<int:item_id>/details', methods=['GET'])
