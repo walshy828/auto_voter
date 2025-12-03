@@ -198,6 +198,7 @@ def _get_scheduler_interval():
     return 60
 
 
+
 def _scheduled_pick_and_start():
     print("[SCHEDULER] Checking for queued items...")
     db = SessionLocal()
@@ -209,7 +210,20 @@ def _scheduled_pick_and_start():
             print("[SCHEDULER] Workers are paused, skipping queue processing")
             return
         
-        # Check current running workers
+        # 1. Check for scheduled jobs whose time has arrived
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        scheduled_items = db.query(QueueItem).filter(
+            QueueItem.status == QueueStatus.scheduled,
+            QueueItem.scheduled_at <= now
+        ).all()
+        
+        for item in scheduled_items:
+            print(f"[SCHEDULER] Transitioning scheduled item {item.id} to queued (scheduled time reached)")
+            item.status = QueueStatus.queued
+            db.commit()
+            socketio.emit('queue_update', {'type': 'status', 'item_id': item.id, 'status': 'queued'})
+        
+        # 2. Check current running workers
         running_count = db.query(QueueItem).filter(QueueItem.status == QueueStatus.running).count()
         max_workers = _get_max_concurrent_workers()
         
@@ -217,7 +231,7 @@ def _scheduled_pick_and_start():
             print(f"[SCHEDULER] Max concurrent workers reached ({running_count}/{max_workers}). Waiting...")
             return
 
-        # pick the next queued item
+        # 3. Pick the next queued item
         it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
         if it:
             print(f"[SCHEDULER] Found queued item {it.id}, attempting to start...")
@@ -288,9 +302,9 @@ def update_queue_item(item_id):
         if not item:
             return jsonify({'error': 'Item not found'}), 404
         
-        # Allow editing queued or paused items
-        if item.status not in [QueueStatus.queued, QueueStatus.paused]:
-            return jsonify({'error': 'Can only edit queued or paused items'}), 400
+        # Allow editing queued, paused, or scheduled items
+        if item.status not in [QueueStatus.queued, QueueStatus.paused, QueueStatus.scheduled]:
+            return jsonify({'error': 'Can only edit queued, paused, or scheduled items'}), 400
         
         data = request.json
         
@@ -301,7 +315,7 @@ def update_queue_item(item_id):
             if 'pause' in data:
                 item.pause = int(data['pause'])
         else:
-            # For queued items, allow updating all fields
+            # For queued and scheduled items, allow updating all fields
             if 'votes' in data:
                 item.votes = int(data['votes'])
             if 'threads' in data:
@@ -314,6 +328,27 @@ def update_queue_item(item_id):
                 item.use_vpn = bool(data['use_vpn'])
             if 'use_tor' in data:
                 item.use_tor = bool(data['use_tor'])
+            
+            # Handle scheduled_at changes
+            if 'scheduled_at' in data:
+                scheduled_at_str = data['scheduled_at']
+                if scheduled_at_str:
+                    try:
+                        from dateutil import parser
+                        scheduled_at = parser.isoparse(scheduled_at_str).replace(tzinfo=None)
+                        item.scheduled_at = scheduled_at
+                        # Update status based on scheduled time
+                        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                        if scheduled_at > now:
+                            item.status = QueueStatus.scheduled
+                        else:
+                            item.status = QueueStatus.queued
+                    except Exception as e:
+                        print(f"[API] Failed to parse scheduled_at: {e}")
+                else:
+                    # Clear scheduled_at and set to queued
+                    item.scheduled_at = None
+                    item.status = QueueStatus.queued
         
         db.commit()
         socketio.emit('queue_update', {'type': 'update', 'item_id': item_id})
@@ -895,45 +930,27 @@ def set_days_to_purge():
 @require_auth
 def list_polls():
     db = SessionLocal()
-    try:
-        polls = db.query(Poll).order_by(Poll.created_at.desc()).all()
-        out = []
-        for p in polls:
-            # Calculate trend
-            # Get last 2 snapshots for this poll
-            from app.models import PollSnapshot
-            snapshots = db.query(PollSnapshot).filter(
-                PollSnapshot.poll_id == p.id
-            ).order_by(PollSnapshot.updated_at.desc()).limit(2).all()
-            
-            trend = 0
-            if len(snapshots) >= 2:
-                current = snapshots[0].place
-                previous = snapshots[1].place
-                if current is not None and previous is not None:
-                    # Trend: Positive means improved (rank number got smaller)
-                    # e.g. Prev 5, Curr 3 => 5 - 3 = +2 (Improved by 2 spots)
-                    trend = previous - current
-            
-            out.append({
-                'id': p.id, 
-                'entryname': p.entryname, 
-                'pollid': p.pollid, 
-                'answerid': p.answerid, 
-                'use_tor': p.use_tor, 
-                'created_at': to_est_string(p.created_at),
-                'status': p.status,
-                'poll_title': p.poll_title,
-                'total_poll_votes': p.total_poll_votes,
-                'total_votes': p.total_votes,
-                'current_place': p.current_place,
-                'votes_behind_first': p.votes_behind_first,
-                'last_snapshot_at': to_est_string(p.last_snapshot_at),
-                'trend': trend
-            })
-        return jsonify(out)
-    finally:
-        db.close()
+    polls = db.query(Poll).order_by(Poll.created_at.desc()).all()
+    out = [{
+        'id': p.id, 
+        'entryname': p.entryname, 
+        'pollid': p.pollid, 
+        'answerid': p.answerid, 
+        'use_tor': p.use_tor, 
+        'created_at': to_est_string(p.created_at),
+        'status': p.status,
+        'poll_title': p.poll_title,
+        'total_poll_votes': p.total_poll_votes,
+        'total_votes': p.total_votes,
+        'current_place': p.current_place,
+        'votes_behind_first': p.votes_behind_first,
+        'last_snapshot_at': to_est_string(p.last_snapshot_at),
+        'previous_place': p.previous_place,
+        'place_trend': p.place_trend,
+        'votes_ahead_second': p.votes_ahead_second
+    } for p in polls]
+    db.close()
+    return jsonify(out)
 
 
 @app.route('/polls/<int:poll_id>', methods=['DELETE'])
@@ -1081,6 +1098,7 @@ def add_queue_item():
     pause = int(data.get('pause', 0))
     use_vpn = int(data.get('use_vpn', 1))
     use_tor = int(data.get('use_tor', 0))
+    scheduled_at_str = data.get('scheduled_at')  # ISO format datetime string
 
     db = SessionLocal()
     poll_ref = None
@@ -1099,7 +1117,34 @@ def add_queue_item():
         db.close()
         return abort(400, 'pollid and answerid required')
 
-    item = QueueItem(poll_id=(poll_ref.id if poll_ref else None), pollid=str(pollid), answerid=str(answerid), votes=votes, threads=threads, per_run=per_run, pause=pause, use_vpn=use_vpn, use_tor=use_tor)
+    # Parse scheduled_at and determine initial status
+    scheduled_at = None
+    initial_status = QueueStatus.queued
+    if scheduled_at_str:
+        try:
+            from dateutil import parser
+            scheduled_at = parser.isoparse(scheduled_at_str).replace(tzinfo=None)
+            # If scheduled time is in the future, set status to scheduled
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            if scheduled_at > now:
+                initial_status = QueueStatus.scheduled
+        except Exception as e:
+            print(f"[API] Failed to parse scheduled_at: {e}")
+
+    item = QueueItem(
+        poll_id=(poll_ref.id if poll_ref else None),
+        queue_name=queue_name,
+        pollid=str(pollid),
+        answerid=str(answerid),
+        votes=votes,
+        threads=threads,
+        per_run=per_run,
+        pause=pause,
+        use_vpn=use_vpn,
+        use_tor=use_tor,
+        scheduled_at=scheduled_at,
+        status=initial_status
+    )
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -1129,6 +1174,7 @@ def list_queue():
             'status': it.status.value,
             'worker_id': it.worker_id,
             'created_at': to_est_string(it.created_at),
+            'scheduled_at': to_est_string(it.scheduled_at),
             'started_at': to_est_string(it.started_at),
             'completed_at': to_est_string(it.completed_at),
             # Progress tracking fields
@@ -1145,8 +1191,7 @@ def list_queue():
 @app.route('/queue/<int:item_id>/start', methods=['POST'])
 @require_auth
 def start_queue_item(item_id):
-    # Mark item as queued so the scheduler picks it up
-    # This ensures execution happens in the scheduler container (with VPN), not the web container
+    """Start a queue item immediately by queuing it and triggering the scheduler."""
     db = SessionLocal()
     try:
         it = db.query(QueueItem).filter(QueueItem.id == item_id).first()
@@ -1157,7 +1202,12 @@ def start_queue_item(item_id):
         db.commit()
         
         socketio.emit('queue_update', {'type': 'status', 'item_id': item_id, 'status': 'queued'})
-        return jsonify({'started': True, 'message': 'Item queued for execution'})
+        
+        # Trigger scheduler immediately instead of waiting for interval
+        print(f"[API] Manually triggering scheduler for item {item_id}")
+        _scheduled_pick_and_start()
+        
+        return jsonify({'started': True, 'message': 'Item queued and scheduler triggered'})
     except Exception as e:
         return abort(500, str(e))
     finally:

@@ -69,13 +69,6 @@ async function refreshPolls() {
 
   const sel = document.getElementById('pollSelect');
   const tbody = document.querySelector('#pollsTable tbody');
-
-  // Dispose of existing tooltips
-  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-    const tooltip = bootstrap.Tooltip.getInstance(el);
-    if (tooltip) tooltip.dispose();
-  });
-
   sel.innerHTML = '<option value="">-- choose existing poll or enter manually --</option>';
   tbody.innerHTML = '';
 
@@ -87,24 +80,58 @@ async function refreshPolls() {
   polls.forEach(p => {
     // table row
     const tr = document.createElement('tr');
-    let trendIcon = '';
-    if (p.trend > 0) {
-      trendIcon = `<i class="bi bi-arrow-up-short text-success fs-5" data-bs-toggle="tooltip" title="Improved by ${p.trend}"></i>`;
-    } else if (p.trend < 0) {
-      trendIcon = `<i class="bi bi-arrow-down-short text-danger fs-5" data-bs-toggle="tooltip" title="Dropped by ${Math.abs(p.trend)}"></i>`;
-    } else {
-      trendIcon = `<i class="bi bi-dash text-muted" data-bs-toggle="tooltip" title="No change"></i>`;
-    }
 
-    const stats = p.total_votes && p.total_poll_votes
-      ? `<div class="small">
-           <strong>${p.total_votes.toLocaleString()}</strong> / ${p.total_poll_votes.toLocaleString()}
-         </div>
-         <div class="small ${p.current_place === 1 ? 'text-success fw-bold' : 'text-danger'} d-flex align-items-center gap-1">
-           [${p.current_place || '?'}:${p.votes_behind_first || 0}]
-           ${trendIcon}
-         </div>`
-      : '<span class="text-muted">-</span>';
+    // Build stats display with trend indicators
+    let stats = '<span class="text-muted">-</span>';
+
+    if (p.total_votes && p.total_poll_votes) {
+      // Trend indicator
+      let trendIcon = '';
+      let trendColor = '';
+      let trendTooltip = '';
+
+      if (p.place_trend === 'up') {
+        trendIcon = '↑';
+        trendColor = 'text-success';
+        trendTooltip = `Moving up from ${p.previous_place || '?'} to ${p.current_place}`;
+      } else if (p.place_trend === 'down') {
+        trendIcon = '↓';
+        trendColor = 'text-danger';
+        trendTooltip = `Moving down from ${p.previous_place || '?'} to ${p.current_place}`;
+      } else if (p.place_trend === 'same') {
+        trendIcon = '→';
+        trendColor = 'text-secondary';
+        trendTooltip = `Staying at ${p.current_place}`;
+      } else if (p.place_trend === 'new') {
+        trendIcon = '★';
+        trendColor = 'text-info';
+        trendTooltip = 'New poll data';
+      }
+
+      // Place indicator with special styling for 1st place
+      const isFirst = p.current_place === 1;
+      const placeClass = isFirst ? 'text-success fw-bold' : 'text-danger';
+      const placeIcon = isFirst ? '★' : '';
+
+      // Vote lead/deficit
+      let voteGap = '';
+      if (isFirst && p.votes_ahead_second !== null && p.votes_ahead_second !== undefined) {
+        voteGap = `<span class="text-success">+${p.votes_ahead_second.toLocaleString()} ahead</span>`;
+      } else if (!isFirst && p.votes_behind_first) {
+        voteGap = `<span class="text-danger">${p.votes_behind_first.toLocaleString()} behind</span>`;
+      }
+
+      stats = `
+        <div class="small">
+          <strong>${p.total_votes.toLocaleString()}</strong> / ${p.total_poll_votes.toLocaleString()}
+        </div>
+        <div class="small ${placeClass}">
+          ${placeIcon} ${p.current_place || '?'}${p.current_place === 1 ? 'st' : p.current_place === 2 ? 'nd' : p.current_place === 3 ? 'rd' : 'th'}
+          ${voteGap ? `(${voteGap})` : ''}
+          ${trendIcon ? `<span class="${trendColor} ms-1" title="${trendTooltip}" data-bs-toggle="tooltip">${trendIcon}</span>` : ''}
+        </div>
+      `;
+    }
 
     const lastUpdate = formatESTTime(p.last_snapshot_at);
 
@@ -112,11 +139,15 @@ async function refreshPolls() {
       ? '<span class="badge bg-danger">Closed</span>'
       : '<span class="badge bg-success">Active</span>';
 
+    // Placeholder for scheduledInfo, assuming it might be added to polls later or is a typo for queue items
+    // For now, it will be an empty string if not defined for polls.
+    const scheduledInfo = p.scheduled_info ? `<div class="small text-muted">${p.scheduled_info}</div>` : '';
+
     tr.innerHTML = `
       <td data-label="">${escapeHtml(p.entryname)}</td>
       <td data-label="Poll ID:">${escapeHtml(p.pollid)}</td>
       <td data-label="Answer ID:">${escapeHtml(p.answerid)}</td>
-      <td data-label="Status:">${statusBadge}</td>
+      <td data-label="Status:">${statusBadge}${scheduledInfo}</td>
       <td data-label="Tor:">${p.use_tor ? '<span class="badge bg-warning text-dark">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
       <td data-label="Stats:">${stats}</td>
       <td data-label="Last Updated:" class="small">${lastUpdate}</td>
@@ -288,9 +319,6 @@ async function refreshPolls() {
     });
   });
 
-  // Initialize tooltips
-  tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
-
   recentPolls.forEach(p => {
     const opt = el('option', { value: p.id }, `${p.entryname} — ${p.pollid}`);
     opt.dataset.pollid = p.pollid;
@@ -298,6 +326,11 @@ async function refreshPolls() {
     opt.dataset.name = p.entryname;
     opt.dataset.use_tor = p.use_tor;
     sel.appendChild(opt);
+  });
+
+  // Initialize tooltips for trend indicators
+  document.querySelectorAll('#pollsTable [data-bs-toggle="tooltip"]').forEach(el => {
+    new bootstrap.Tooltip(el);
   });
 }
 
@@ -392,6 +425,22 @@ function renderQueueItemContent(it) {
   const startTime = formatESTTime(it.started_at);
   const endTime = formatESTTime(it.completed_at);
 
+  // Scheduled time and countdown
+  let scheduledInfo = '';
+  if (it.status === 'scheduled' && it.scheduled_at) {
+    const scheduledTime = new Date(it.scheduled_at);
+    const now = new Date();
+    const diff = scheduledTime - now;
+
+    if (diff > 0) {
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      scheduledInfo = `<div class="small text-muted">Starts in: ${hours}h ${minutes}m</div>`;
+    } else {
+      scheduledInfo = '<div class="small text-warning">Starting soon...</div>';
+    }
+  }
+
   // Poll results link
   const pollLink = `<a href="https://poll.fm/${it.pollid}/results" target="_blank" class="text-decoration-none">${escapeHtml(it.pollid)}</a>`;
 
@@ -469,13 +518,14 @@ function renderQueueItemContent(it) {
   // Desktop table view (hidden on mobile via CSS)
   const desktopRow = `
     <td class="d-none d-md-table-cell">${it.id}</td>
-    <td class="d-none d-md-table-cell">${escapeHtml(it.queue_name || '-')}</td>
-    <td class="d-none d-md-table-cell">${pollLink} / ${escapeHtml(it.answerid)}</td>
-    <td class="d-none d-md-table-cell" style="min-width: 200px">${progressBar}</td>
-    <td class="d-none d-md-table-cell">${successBadge}</td>
-    <td class="d-none d-md-table-cell small">${startTime}</td>
-    <td class="d-none d-md-table-cell small">${endTime}</td>
-    <td class="d-none d-md-table-cell">${statusBadge}${statusText}</td>
+    <td class="d-none d-md-table-cell" data-label="">${escapeHtml(it.queue_name || '-')}</td>
+    <td class="d-none d-md-table-cell" data-label="Poll ID:">${pollLink}</td>
+    <td class="d-none d-md-table-cell" data-label="Answer ID:">${escapeHtml(it.answerid)}</td>
+    <td class="d-none d-md-table-cell" data-label="Status:">${statusBadge}${scheduledInfo}${statusText}</td>
+    <td class="d-none d-md-table-cell" data-label="Progress:">${progressBar}</td>
+    <td class="d-none d-md-table-cell" data-label="Success:">${successBadge}</td>
+    <td class="d-none d-md-table-cell" data-label="Started:" class="small">${startTime}</td>
+    <td class="d-none d-md-table-cell" data-label="Ended:" class="small">${endTime}</td>
     <td class="d-none d-md-table-cell action-buttons"></td>
   `;
 
@@ -505,7 +555,7 @@ function attachQueueItemListeners(tr, it) {
   btnDetails.onclick = () => showQueueDetails(it.id);
   addBtn(btnDetails);
 
-  // Start button
+  // Start button (for queued items)
   if (it.status === 'queued') {
     const btn = el('button', {
       class: 'btn btn-sm btn-primary me-1',
@@ -516,6 +566,22 @@ function attachQueueItemListeners(tr, it) {
     btn.onclick = async () => {
       await authedFetch(`/queue/${it.id}/start`, { method: 'POST' });
       showToast('Started job #' + it.id, 'success');
+      refreshQueue();
+    };
+    addBtn(btn);
+  }
+
+  // Run Now button (for scheduled items)
+  if (it.status === 'scheduled') {
+    const btn = el('button', {
+      class: 'btn btn-sm btn-success me-1',
+      'data-bs-toggle': 'tooltip',
+      'title': 'Run Now (Skip Schedule)'
+    });
+    btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+    btn.onclick = async () => {
+      await authedFetch(`/queue/${it.id}/start`, { method: 'POST' });
+      showToast('Starting job #' + it.id + ' immediately', 'success');
       refreshQueue();
     };
     addBtn(btn);
@@ -672,14 +738,13 @@ function updateQueueItemProgress(data) {
 }
 
 function statusToBadge(s) {
-  const map = {
-    queued: '<span class="badge bg-secondary">queued</span>',
-    running: '<span class="badge bg-primary">running</span>',
-    paused: '<span class="badge bg-warning text-dark">paused</span>',
-    completed: '<span class="badge bg-success">completed</span>',
-    canceled: '<span class="badge bg-danger">canceled</span>'
-  };
-  return map[s] || `<span class="badge bg-light text-dark">${escapeHtml(s)}</span>`;
+  if (s === 'queued') return '<span class="badge bg-secondary">Queued</span>';
+  if (s === 'scheduled') return '<span class="badge bg-warning text-dark"><i class="bi bi-clock"></i> Scheduled</span>';
+  if (s === 'running') return '<span class="badge bg-primary">Running</span>';
+  if (s === 'paused') return '<span class="badge bg-info">Paused</span>';
+  if (s === 'completed') return '<span class="badge bg-success">Completed</span>';
+  if (s === 'canceled') return '<span class="badge bg-danger">Canceled</span>';
+  return '<span class="badge bg-secondary">' + s + '</span>';
 }
 
 function escapeHtml(s) {
@@ -759,6 +824,12 @@ document.getElementById('queueForm').addEventListener('submit', async (e) => {
   payload.votes = votes; payload.threads = threads; payload.per_run = per_run; payload.pause = pause;
   payload.use_vpn = use_vpn;
   payload.use_tor = use_tor;
+
+  // Add scheduled_at if provided
+  const scheduled_at_input = document.getElementById('q_scheduled_at').value;
+  if (scheduled_at_input) {
+    payload.scheduled_at = new Date(scheduled_at_input).toISOString();
+  }
 
   await authedFetch('/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 

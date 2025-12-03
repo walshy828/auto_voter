@@ -230,12 +230,38 @@ def extract_poll_results(url, pollid, force=False):
                     break
             
             if target_stats:
+                # Store previous placement before updating
+                old_place = poll_record.current_place
+                
+                # Update current stats
                 poll_record.total_votes = target_stats['votes']
                 poll_record.current_place = target_stats['place']
+                
+                # Calculate votes_behind_first or votes_ahead_second
                 if target_stats['place'] > 1:
                     poll_record.votes_behind_first = all_answers[0]['votes'] - target_stats['votes']
+                    poll_record.votes_ahead_second = None
                 else:
+                    # In 1st place
                     poll_record.votes_behind_first = 0
+                    # Calculate lead over 2nd place
+                    if len(all_answers) > 1:
+                        poll_record.votes_ahead_second = target_stats['votes'] - all_answers[1]['votes']
+                    else:
+                        poll_record.votes_ahead_second = 0
+                
+                # Calculate trend
+                if old_place is None:
+                    poll_record.place_trend = 'new'
+                elif old_place > target_stats['place']:
+                    poll_record.place_trend = 'up'  # Moving up (e.g., 3rd -> 2nd)
+                elif old_place < target_stats['place']:
+                    poll_record.place_trend = 'down'  # Moving down (e.g., 2nd -> 3rd)
+                else:
+                    poll_record.place_trend = 'same'
+                
+                # Update previous_place for next comparison
+                poll_record.previous_place = old_place
             else:
                 # If no match found, log it for debugging
                 print(f"[WARNING] Could not find match for '{poll_record.entryname}' in poll {pollid}")

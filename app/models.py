@@ -16,6 +16,7 @@ def utcnow():
 
 
 class QueueStatus(str, enum.Enum):
+    scheduled = 'scheduled'  # Waiting for scheduled time
     queued = 'queued'
     running = 'running'
     paused = 'paused'
@@ -42,6 +43,11 @@ class Poll(Base):
     current_place = Column(Integer, nullable=True)
     votes_behind_first = Column(Integer, nullable=True)
     last_snapshot_at = Column(DateTime, nullable=True)
+    
+    # Trend tracking fields
+    previous_place = Column(Integer, nullable=True)  # Previous placement for trend calculation
+    place_trend = Column(String(10), nullable=True)  # 'up', 'down', 'same', 'new'
+    votes_ahead_second = Column(Integer, nullable=True)  # For 1st place: votes ahead of 2nd place
 
 
 class PollResult(Base):
@@ -99,6 +105,7 @@ class QueueItem(Base):
     # Link to worker metadata (if created)
     worker_id = Column(Integer, ForeignKey('worker_processes.id'), nullable=True)
     created_at = Column(DateTime, default=utcnow)
+    scheduled_at = Column(DateTime, nullable=True)  # When to start this job (if scheduled)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     result_msg = Column(Text, nullable=True)

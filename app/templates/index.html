@@ -713,9 +713,21 @@
               <input type="checkbox" class="form-check-input" id="q_use_vpn" checked>
               <label class="form-check-label" for="q_use_vpn">Use VPN</label>
             </div>
-            <div class="form-check">
+            <div class="form-check mb-3">
               <input type="checkbox" class="form-check-input" id="q_use_tor">
               <label class="form-check-label" for="q_use_tor">Use Tor</label>
+            </div>
+
+            <div class="mb-3">
+              <label for="q_scheduled_at" class="form-label">
+                Schedule For Later (Optional)
+                <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                  title="Leave empty to run immediately. Times are in your local timezone."></i>
+              </label>
+              <input type="datetime-local" class="form-control" id="q_scheduled_at">
+              <div class="form-text">
+                Leave empty to start immediately. Times shown in your local timezone.
+              </div>
             </div>
           </div>
           <div class="modal-footer">
