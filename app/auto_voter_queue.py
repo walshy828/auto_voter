@@ -244,6 +244,22 @@ def update_queue_progress(item_id, votes_cast, votes_success, status):
         if DEBUG_MODE:
             print(f"[DEBUG] Failed to update progress: {e}")
 
+def configure_vpn_settings():
+    """Configure global VPN settings for efficiency."""
+    try:
+        # Set protocol to Lightway UDP for faster connections
+        subprocess.run(['expressvpn', 'preferences', 'set', 'preferred_protocol', 'lightway_udp'], 
+                     capture_output=True, timeout=5)
+        
+        # Enforce Network Lock OFF
+        subprocess.run(['expressvpn', 'preferences', 'set', 'network_lock', 'off'], 
+                     capture_output=True, timeout=5)
+        print("[VPN] Configured settings: Protocol=Lightway UDP, Network Lock=OFF")
+        return True
+    except Exception as e:
+        print(f"[VPN] Warning: Failed to configure settings: {e}")
+        return False
+
 def connect_vpn():
     """Connect to ExpressVPN using random location from vpnloc list."""
     global vpnlocat
@@ -266,7 +282,7 @@ def connect_vpn():
             status_elapsed = time.time() - status_start
             if DEBUG_MODE:
                 print(f"[VPN DEBUG] Status output: {result.stdout}")
-            print(f"[VPN PERF] Status check took {status_elapsed:.2f}s")
+            # print(f"[VPN PERF] Status check took {status_elapsed:.2f}s")
             
             if 'Connected' in result.stdout:
                 # Extract location from status output
@@ -307,16 +323,8 @@ def connect_vpn():
             print(f"[VPN] Error getting location from list: {e}, falling back to 'smart'")
             location_alias = "smart"
         
-        # Enforce Network Lock OFF before connecting
-        netlock_start = time.time()
-        try:
-            subprocess.run(['expressvpn', 'preferences', 'set', 'network_lock', 'off'], 
-                         capture_output=True, timeout=5, check=False)
-            netlock_elapsed = time.time() - netlock_start
-            print(f"[VPN] Enforced Network Lock: OFF ({netlock_elapsed:.2f}s)")
-        except Exception as e:
-            netlock_elapsed = time.time() - netlock_start
-            print(f"[VPN] Warning: Failed to set network_lock off after {netlock_elapsed:.2f}s: {e}")
+        # Note: Network Lock and Protocol settings are now handled in configure_vpn_settings()
+        # called at the start of the job to save time per connection.
 
         connect_start = time.time()
         try:
@@ -364,20 +372,13 @@ def disconnect_vpn():
             print("[VPN] ExpressVPN not found, skipping disconnect")
             return True
         
-        # Check if connected (short timeout)
-        try:
-            result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=3)
-            if 'Not connected' in result.stdout:
-                print("[VPN] Already disconnected")
-                return True
-        except subprocess.TimeoutExpired:
-            print("[VPN] Status check timed out")
-            return False
+        # Optimization: Skip explicit status check. 'disconnect' will tell us if we aren't connected.
+
         
         # Disconnect
         print("[VPN] Disconnecting from ExpressVPN...")
         try:
-            result = subprocess.run(['expressvpn', 'disconnect'], capture_output=True, text=True, timeout=15)
+            result = subprocess.run(['expressvpn', 'disconnect'], capture_output=True, text=True, timeout=20)
             disconnect_elapsed = time.time() - start_time
             
             if result.returncode == 0 or 'Not connected' in result.stdout:
@@ -403,6 +404,23 @@ def disconnect_vpn():
         except subprocess.TimeoutExpired:
             disconnect_elapsed = time.time() - start_time
             print(f"[VPN] Disconnect timed out after {disconnect_elapsed:.2f}s")
+            
+            # Double check if we are actually disconnected despite timeout
+            if not is_vpn_connected():
+                print("[VPN] ...but verified we are disconnected. Proceeding.")
+                return True
+                
+            # Force kill if still connected
+            print("[VPN] Force killing expressvpn processes...")
+            try:
+                subprocess.run(['pkill', '-9', 'expressvpn'], timeout=5)
+                time.sleep(2)
+                if not is_vpn_connected():
+                    print("[VPN] Force kill successful, disconnected.")
+                    return True
+            except:
+                pass
+                
             return False
     except Exception as e:
         elapsed = time.time() - start_time
@@ -557,6 +575,9 @@ def vote_start(start_mode):
         # Connect to VPN if needed
         vpn_connected = False
         if use_vpn:
+            # Configure settings once at start
+            configure_vpn_settings()
+            
             vpn_start = time.time()
             print(f"[vote_start] VPN enabled for this job, connecting...")
             vpn_connected = connect_vpn()
@@ -896,7 +917,13 @@ def new_location():
         disconnect_elapsed = time.time() - disconnect_start
         
         if not disconnect_success:
-            print(f"[VPN] Disconnect failed after {disconnect_elapsed:.2f}s, continuing anyway")
+            print(f"[VPN] Disconnect failed after {disconnect_elapsed:.2f}s")
+            # If we failed to disconnect and are still connected, we cannot connect to a new location
+            if is_vpn_connected():
+                print(f"[VPN] Still connected to previous location. Aborting switch to {location_alias} to avoid 'Please disconnect first' error.")
+                return False
+            else:
+                print(f"[VPN] Disconnect returned false but we seem disconnected. Proceeding to connect.")
         
         # Try to connect
         connect_start = time.time()
