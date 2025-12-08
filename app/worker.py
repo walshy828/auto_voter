@@ -35,6 +35,14 @@ def _run_vote_wrapper(item_id: int, worker_id: int, log_path: str = None):
 
         
         
+        
+        db = SessionLocal()
+        it = db.query(QueueItem).filter(QueueItem.id == item_id).first()
+        db.close()
+        if not it:
+            print(f"[Worker {worker_id}] No queue item {item_id} found")
+            return
+
         import app.auto_voter_simple as avs
         
         # Build config dict for valid arguments
