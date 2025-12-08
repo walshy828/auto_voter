@@ -27,6 +27,9 @@ def upgrade():
         with op.batch_alter_table('queue_items', schema=None) as batch_op:
             batch_op.add_column(sa.Column('debug', sa.Boolean(), server_default=sa.text('0'), nullable=True))
 
+    # Cleanup potentially existing index
+    op.execute('DROP INDEX IF EXISTS ix_poll_scheduler_config_id')
+
     with op.batch_alter_table('poll_scheduler_config', schema=None) as batch_op:
         batch_op.alter_column('id',
                    existing_type=sa.INTEGER(),
