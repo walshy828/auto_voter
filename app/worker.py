@@ -34,32 +34,37 @@ def _run_vote_wrapper(item_id: int, worker_id: int, log_path: str = None):
         print(f"[Worker {worker_id}] Starting vote process for item {item_id}")
 
         
-        import app.auto_voter_queue as avq
-        db = SessionLocal()
-        it = db.query(QueueItem).filter(QueueItem.id == item_id).first()
-        db.close()
-        if not it:
-            print(f"[Worker {worker_id}] No queue item {item_id} found")
-            return
-
-        print(f"[Worker {worker_id}] Configuring: pollid={it.pollid}, answerid={it.answerid}, votes={it.votes}, threads={it.threads}")
         
-        avq.pollid = it.pollid
-        avq.answerid = it.answerid
-        avq.start_totalToRun = it.votes
-        avq.num_threads = it.threads
-        avq.p2_PerRun = it.per_run
-        avq.p2_pause = it.pause
-        avq.use_vpn = bool(it.use_vpn)
-        avq.use_tor = bool(it.use_tor)
-        avq.jobname = it.queue_name or f"poll_{it.pollid}"
+        import app.auto_voter_simple as avs
         
-        # Set progress tracking globals
-        avq.current_item_id = item_id
-        # Note: socketio_instance will be set by start_queue_item_background
-
-        print(f"[Worker {worker_id}] Calling vote_start(2)...")
-        avq.vote_start(2)
+        # Build config dict for valid arguments
+        job_config = {
+            'pollid': it.pollid,
+            'answerid': it.answerid,
+            'votes': it.votes,
+            'threads': it.threads,
+            'per_run': it.per_run,
+            'pause': it.pause,
+            'use_vpn': bool(it.use_vpn),
+            'use_tor': bool(it.use_tor),
+            'item_id': item_id,
+            'socketio': None # will be set if passed, but here we run in child process, socketio instance isn't shared directly usually? 
+                             # Wait, the original code had: avq.socketio_instance = socketio 
+                             # But that was in start_queue_item_background (parent process). 
+                             # In _run_vote_wrapper (child process), socketio is not passed. 
+                             # The child process updates DB, and _monitor_process (parent) sees exit. 
+                             # Progress updates happen inside child process -> DB.
+                             # If we want socketio events from child, we need a way to emit. 
+                             # The original code used a shared 'socketio_instance' global which likely wouldn't work across process boundary 
+                             # unless using threading or specific IPC. 
+                             # However, let's stick to the pattern: pass what we have.
+                             # In _run_vote_wrapper, we don't have socketio instance.
+        }
+        
+        print(f"[Worker {worker_id}] Configuring simple voter: {job_config}")
+        
+        print(f"[Worker {worker_id}] Calling avs.start_job()...")
+        avs.start_job(job_config)
         print(f"[Worker {worker_id}] vote_start completed successfully")
     except Exception as e:
         print(f"[Worker {worker_id}] Error: {e}")
