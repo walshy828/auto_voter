@@ -66,6 +66,13 @@ else
     echo "WARNING: Could not determine default gateway, skipping route configuration"
 fi
 
+# Run database migrations
+echo "Running database migrations..."
+if [ -f "alembic.ini" ]; then
+    alembic upgrade head || echo "WARNING: Database migration failed, but continuing..."
+else
+    echo "alembic.ini not found, skipping migrations"
+fi
 
 echo "Starting application with command: $@"
 "$@"

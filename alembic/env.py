@@ -1,7 +1,11 @@
 from __future__ import with_statement
 
 import os
+import sys
 from logging.config import fileConfig
+
+# Add the project root to the path so we can import app
+sys.path.append(os.getcwd())
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -18,6 +22,7 @@ fileConfig(config.config_file_name)
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 from app.db import Base
+import app.models  # Ensure models are loaded
 
 target_metadata = Base.metadata
 
