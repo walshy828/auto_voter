@@ -16,6 +16,39 @@ init_db()
 print("[Scheduler Service] Database initialized")
 
 
+def ensure_vpn_connected():
+    """Ensure VPN is connected. Returns True if connected or successfully connected."""
+    import subprocess
+    try:
+        # Check if expressvpn command exists
+        try:
+            subprocess.run(['which', 'expressvpn'], capture_output=True, timeout=2, check=True)
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+            print("[VPN Check] ExpressVPN command not found. Cannot ensure VPN.")
+            return False
+
+        # Check status
+        result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=3)
+        if 'Connected' in result.stdout:
+            return True
+        
+        print("[VPN Check] VPN not connected. Connecting...")
+        subprocess.run(['expressvpn', 'connect'], capture_output=True, timeout=15)
+        
+        # Verify
+        result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=3)
+        if 'Connected' in result.stdout:
+            print("[VPN Check] Successfully connected.")
+            return True
+        else:
+            print("[VPN Check] Failed to connect.")
+            return False
+            
+    except Exception as e:
+        print(f"[VPN Check] Error: {e}")
+        return False
+
+
 def pick_and_start():
     """Pick and start queued voting items with locking and max worker check."""
     # Use a file lock to prevent race conditions
@@ -67,6 +100,14 @@ def pick_and_start():
                 it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
                 if it:
                     print(f"[Scheduler Service] Found queued item {it.id}, attempting to start...")
+                    
+                    # Check VPN if required
+                    if it.use_vpn:
+                        print(f"[Scheduler Service] Item {it.id} requires VPN. Checking connection...")
+                        if not ensure_vpn_connected():
+                            print(f"[Scheduler Service] Could not establish VPN connection. Skipping start of item {it.id}...")
+                            return
+
                     try:
                         start_queue_item_background(it.id)
                         print(f"[Scheduler Service] Successfully started item {it.id}")
@@ -114,6 +155,10 @@ def run_poll_results_scheduler():
                 return
         
         print(f"[Poll Scheduler] Running poll results capture...")
+        
+        # Ensure VPN is connected for results scraping to avoid IP blocks/leaks
+        ensure_vpn_connected()
+        
         run_all_polls(db_session=db)
         
         # Update last run time
