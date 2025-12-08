@@ -33,7 +33,15 @@ def _run_vote_wrapper(item_id: int, worker_id: int, log_path: str = None):
 
         print(f"[Worker {worker_id}] Starting vote process for item {item_id}")
 
+        import app.auto_voter_simple as avs
         
+        # Setup signal handler to gracefully stop the job
+        def handle_sigterm(signum, frame):
+            print(f"[Worker {worker_id}] Received signal {signum}. Stopping job...")
+            avs.stop_event.set()
+            
+        signal.signal(signal.SIGTERM, handle_sigterm)
+        signal.signal(signal.SIGINT, handle_sigterm)
         
         
         db = SessionLocal()

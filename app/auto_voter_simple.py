@@ -83,6 +83,12 @@ socketio_instance = None
 
 # --- Functions --- #
 
+def interruptible_sleep(seconds):
+    """Sleep for roughly 'seconds' time, but wake up immediately if stop_event is set."""
+    if stop_event.wait(timeout=seconds):
+        return True
+    return False
+
 def start_job(job_config):
     """
     Main entry point for the worker.
@@ -139,6 +145,9 @@ def start_job(job_config):
         starttime = datetime.datetime.now()
         
         if vpn_enabled:
+            # Check stop event before possibly long VPN switch
+            if stop_event.is_set(): break
+            
             if JOB_DEBUG_ENABLED:
                 log_detailed(f"Batch {i+1}: Switching VPN location...")
             new_location()
@@ -183,7 +192,11 @@ def start_job(job_config):
         if JOB_DEBUG_ENABLED:
             log_detailed(f"Batch {i+1} finished. Success Rate: {GoodThisLoopPercent:.1f}%. Pausing for {pause_duration}s (Adaptive={is_adaptive}).")
             
-        time.sleep(pause_duration)
+        # Use interruptible sleep
+        if interruptible_sleep(pause_duration):
+            if JOB_DEBUG_ENABLED:
+                 log_detailed(f"Pause interrupted by stop event.")
+            break
         
         if JOB_DEBUG_ENABLED:
              log_detailed(f"Pause complete. Resuming...")
@@ -260,7 +273,9 @@ def auto_voter(thread_id, RunCount):
     start_delay = random.randint(1,8)
     if JOB_DEBUG_ENABLED:
         log_detailed(f"[Thread {thread_id}] Starting up. Sleeping {start_delay}s.")
-    time.sleep(start_delay)
+    
+    if interruptible_sleep(start_delay):
+        return
 
     for i in range(RunCount):
         if stop_event.is_set():
@@ -283,7 +298,8 @@ def auto_voter(thread_id, RunCount):
                     with Controller.from_port(port=9051) as controller:
                         controller.authenticate(password="welcomeTomyPa55word")
                         controller.signal(Signal.NEWNYM)
-                        time.sleep(tor_delay)
+                        # Interruptible TOR delay
+                        if interruptible_sleep(tor_delay): return
                     session.proxies.update(proxies)
                     if JOB_DEBUG_ENABLED:
                         log_detailed(f"[Thread {thread_id}] TOR: Proxy updated.")
@@ -295,6 +311,9 @@ def auto_voter(thread_id, RunCount):
             if JOB_DEBUG_ENABLED:
                 log_detailed(f"[Thread {thread_id}] GET https://poll.fm/{pollid}")
             
+            # Use threading Lock for stop check if needed? No, Event is thread safe.
+            if stop_event.is_set(): return
+
             resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
             resp.raise_for_status()
 
@@ -337,6 +356,8 @@ def auto_voter(thread_id, RunCount):
                     log_detailed(f"[Thread {thread_id}] Submitting Vote. Data:\n{json.dumps(debug_info, indent=2)}")
                 else:
                     print_debug(payload, 2)
+                
+                if stop_event.is_set(): return
                 
                 vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers)
                 
@@ -399,17 +420,17 @@ def auto_voter(thread_id, RunCount):
                      log_detailed(f"[Thread {thread_id}] Cooldown triggered! Failed {NoVoteRun} times. Sleeping {Cooldown}s.")
                 influx_write_records(VOTE_BATCH)
                 VOTE_BATCH.clear()
-                time.sleep(Cooldown)
+                if interruptible_sleep(Cooldown): return
 
             cntpause += 1
             if cntToPause == 0:
-                time.sleep(timeoutseconds)
+                if interruptible_sleep(timeoutseconds): return
             elif (cntpause == cntToPause):
                 if JOB_DEBUG_ENABLED:
                      log_detailed(f"[Thread {thread_id}] Long pause triggered ({longPauseSeconds}s).")
                 influx_write_records(VOTE_BATCH)
                 VOTE_BATCH.clear()
-                time.sleep(longPauseSeconds)
+                if interruptible_sleep(longPauseSeconds): return
                 cntpause = 0
 
         except Exception as e:
@@ -417,7 +438,7 @@ def auto_voter(thread_id, RunCount):
                  log_detailed(f"[Thread {thread_id}] EXCEPTION: {e}")
             else:
                 print(f"Voting error: {e}")
-            time.sleep(2)
+            if interruptible_sleep(2): return
 
     influx_write_records(VOTE_BATCH)
     VOTE_BATCH.clear()
