@@ -299,7 +299,8 @@ def get_queue_item_details(item_id):
             'completed_at': item.completed_at.isoformat() if item.completed_at else None,
             'duration_seconds': duration,
             'worker_id': item.worker_id,
-            'pid': item.pid
+            'pid': item.pid,
+            'debug': item.debug
         })
     finally:
         db.close()
@@ -341,6 +342,8 @@ def update_queue_item(item_id):
                 item.use_vpn = bool(data['use_vpn'])
             if 'use_tor' in data:
                 item.use_tor = bool(data['use_tor'])
+            if 'debug' in data:
+                item.debug = bool(data['debug'])
             
             # Handle scheduled_at changes
             if 'scheduled_at' in data:
@@ -1111,6 +1114,7 @@ def add_queue_item():
     pause = int(data.get('pause', 0))
     use_vpn = int(data.get('use_vpn', 1))
     use_tor = int(data.get('use_tor', 0))
+    debug = bool(data.get('debug', False))
     scheduled_at_str = data.get('scheduled_at')  # ISO format datetime string
 
     db = SessionLocal()
@@ -1155,6 +1159,7 @@ def add_queue_item():
         pause=pause,
         use_vpn=use_vpn,
         use_tor=use_tor,
+        debug=debug,
         scheduled_at=scheduled_at,
         status=initial_status
     )
@@ -1184,6 +1189,7 @@ def list_queue():
             'pause': it.pause,
             'use_vpn': it.use_vpn,
             'use_tor': it.use_tor,
+            'debug': it.debug,
             'status': it.status.value,
             'worker_id': it.worker_id,
             'created_at': to_est_string(it.created_at),
@@ -1270,6 +1276,7 @@ def retry_queue_item(item_id):
             pause=old_item.pause,
             use_vpn=old_item.use_vpn,
             use_tor=old_item.use_tor,
+            debug=old_item.debug,
             status=QueueStatus.queued
         )
         db.add(new_item)
