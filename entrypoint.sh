@@ -12,8 +12,18 @@ else
     echo "WARNING: ExpressVPN daemon not found! VPN features will not work."
 fi
 
-# Wait for daemon to be ready t
-sleep 5
+# Wait for daemon to be ready
+echo "Waiting for ExpressVPN daemon..."
+MAX_RETRIES=15
+count=0
+while ! expressvpn status >/dev/null 2>&1; do
+    sleep 1
+    count=$((count+1))
+    if [ $count -ge $MAX_RETRIES ]; then
+        echo "WARNING: Timed out waiting for ExpressVPN daemon"
+        break
+    fi
+done
 
 # Activate if code is provided
 if [ -n "$EXPRESSVPN_ACTIVATION_CODE" ]; then
@@ -28,7 +38,7 @@ if expressvpn status &>/dev/null; then
     expressvpn preferences set preferred_protocol lightway_udp || true
     expressvpn preferences set send_diagnostics false || true
     # Force disable network lock
-    expressvpn preferences set network_lock on || false
+    #expressvpn preferences set network_lock on || false
 else
     echo "WARNING: ExpressVPN daemon not responding, skipping preference configuration"
 fi
