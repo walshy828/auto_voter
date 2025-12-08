@@ -28,7 +28,7 @@ if expressvpn status &>/dev/null; then
     expressvpn preferences set preferred_protocol lightway_udp || true
     expressvpn preferences set send_diagnostics false || true
     # Force disable network lock
-    expressvpn preferences set network_lock off || true
+    expressvpn preferences set network_lock on || false
 else
     echo "WARNING: ExpressVPN daemon not responding, skipping preference configuration"
 fi
