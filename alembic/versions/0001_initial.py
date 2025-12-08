@@ -20,6 +20,9 @@ def upgrade():
     insp = sa.inspect(conn)
     columns = [c['name'] for c in insp.get_columns('queue_items')]
     
+    # Cleanup leftover temp table from failed batch migrations
+    op.execute('DROP TABLE IF EXISTS _alembic_tmp_queue_items')
+    
     if 'debug' not in columns:
         with op.batch_alter_table('queue_items', schema=None) as batch_op:
             batch_op.add_column(sa.Column('debug', sa.Boolean(), server_default=sa.text('0'), nullable=True))
