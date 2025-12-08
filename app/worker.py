@@ -55,6 +55,7 @@ def _run_vote_wrapper(item_id: int, worker_id: int, log_path: str = None):
             'pause': it.pause,
             'use_vpn': bool(it.use_vpn),
             'use_tor': bool(it.use_tor),
+            'debug': bool(it.debug) if hasattr(it, 'debug') else False,
             'item_id': item_id,
             'socketio': None # will be set if passed, but here we run in child process, socketio instance isn't shared directly usually? 
                              # Wait, the original code had: avq.socketio_instance = socketio 

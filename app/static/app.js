@@ -815,6 +815,7 @@ document.getElementById('queueForm').addEventListener('submit', async (e) => {
   const pause = document.getElementById('q_pause').value;
   const use_vpn = document.getElementById('q_use_vpn').checked ? 1 : 0;
   const use_tor = document.getElementById('q_use_tor').checked ? 1 : 0;
+  const debug = document.getElementById('q_debug').checked;
 
   const payload = {};
   if (pollSelect) payload.poll_db_id = pollSelect;
@@ -824,6 +825,7 @@ document.getElementById('queueForm').addEventListener('submit', async (e) => {
   payload.votes = votes; payload.threads = threads; payload.per_run = per_run; payload.pause = pause;
   payload.use_vpn = use_vpn;
   payload.use_tor = use_tor;
+  if (debug) payload.debug = true;
 
   // Add scheduled_at if provided
   const scheduled_at_input = document.getElementById('q_scheduled_at').value;
@@ -838,6 +840,7 @@ document.getElementById('queueForm').addEventListener('submit', async (e) => {
   document.getElementById('queueForm').reset();
   document.getElementById('q_use_vpn').checked = true;
   document.getElementById('q_use_tor').checked = false;
+  document.getElementById('q_debug').checked = false;
 
   const modalEl = document.getElementById('addQueueModal');
   const modal = bootstrap.Modal.getInstance(modalEl);
@@ -1806,6 +1809,7 @@ async function showQueueDetails(itemId) {
     document.getElementById('detailsPause').value = data.pause;
     document.getElementById('detailsUseVpn').checked = data.use_vpn;
     document.getElementById('detailsUseTor').checked = data.use_tor;
+    document.getElementById('detailsDebug').checked = data.debug;
 
     // Reset to read-only mode
     document.getElementById('detailsVotes').readOnly = true;
@@ -1814,6 +1818,7 @@ async function showQueueDetails(itemId) {
     document.getElementById('detailsPause').readOnly = true;
     document.getElementById('detailsUseVpn').disabled = true;
     document.getElementById('detailsUseTor').disabled = true;
+    document.getElementById('detailsDebug').disabled = true;
     document.getElementById('editButtons').style.display = 'none';
 
     // Show edit button for queued or paused items
@@ -1882,6 +1887,7 @@ document.getElementById('btnEditSettings').addEventListener('click', () => {
     document.getElementById('detailsPause').readOnly = false;
     document.getElementById('detailsUseVpn').disabled = false;
     document.getElementById('detailsUseTor').disabled = false;
+    document.getElementById('detailsDebug').disabled = false;
   }
 
   document.getElementById('btnEditSettings').style.display = 'none';
@@ -1908,7 +1914,8 @@ document.getElementById('btnSaveSettings').addEventListener('click', async () =>
         per_run: parseInt(document.getElementById('detailsPerRun').value),
         pause: parseInt(document.getElementById('detailsPause').value),
         use_vpn: document.getElementById('detailsUseVpn').checked,
-        use_tor: document.getElementById('detailsUseTor').checked
+        use_tor: document.getElementById('detailsUseTor').checked,
+        debug: document.getElementById('detailsDebug').checked
       })
     });
 

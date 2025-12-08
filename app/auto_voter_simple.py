@@ -26,6 +26,8 @@ start_totalToRun = 0
 p2_PerRun = 10
 p2_pause = 1
 print_debug_msg = False
+# We will use this global to track the per-job debug setting
+JOB_DEBUG_ENABLED = False 
 print_debug_level = 1
 
 RandomTimes = False
@@ -64,7 +66,7 @@ use_tor = False
 proxies = {'http': 'socks5h://127.0.0.1:9050', 'https': 'socks5h://127.0.0.1:9050'}
 # Using threading Lock since we are in a single process (the worker child process)
 lock = threading.Lock()
-# Using simple integer and lock for counting, or Value if we strictly followed manual but threading is fine here
+# Using simple integer and lock for counting
 count_good = 0 
 
 vpnloc = config.vpnloc
@@ -84,12 +86,10 @@ socketio_instance = None
 def start_job(job_config):
     """
     Main entry point for the worker.
-    job_config: dict with keys:
-      pollid, answerid, votes, threads, per_run, pause, use_vpn, use_tor, item_id, socketio
     """
     global pollid, answerid, start_totalToRun, num_threads, p2_PerRun, p2_pause
     global use_tor, vpn_enabled, current_item_id, socketio_instance
-    global RunPerScript, cntToRun, count_good, stop_event
+    global RunPerScript, cntToRun, count_good, stop_event, JOB_DEBUG_ENABLED
 
     # Reset globals
     stop_event.clear()
@@ -105,6 +105,7 @@ def start_job(job_config):
     p2_pause = job_config.get('pause', 0)
     vpn_enabled = job_config.get('use_vpn', False)
     use_tor = job_config.get('use_tor', False)
+    JOB_DEBUG_ENABLED = job_config.get('debug', False)
     
     current_item_id = job_config.get('item_id')
     socketio_instance = job_config.get('socketio')
@@ -113,36 +114,37 @@ def start_job(job_config):
     RunPerScript = start_totalToRun // num_threads
     cntToRun = RunPerScript
     
-    print(f"[AutoVoterSimple] Starting Job: Poll={pollid}, Threads={num_threads}, Total={start_totalToRun}, VPN={vpn_enabled}")
+    msg = f"[AutoVoterSimple] Starting Job: Poll={pollid}, Threads={num_threads}, Total={start_totalToRun}, VPN={vpn_enabled}, Debug={JOB_DEBUG_ENABLED}"
+    print(msg)
+    if JOB_DEBUG_ENABLED:
+        log_detailed(f"Job Configuration: {job_config}")
 
-    # Mode 2 (Batch) logic from manual script
-    # LoopTimes = max(1, RunPerScript // p2_PerRun) 
-    # Logic in manual script:
-    #   LoopTimes = max(1, RunPerScript // p2_PerRun)
-    #   for i in range(LoopTimes): ...
-    
-    # We need to handle the case where RunPerScript < p2_PerRun (run at least once)
+    # Calculate Loops
     if p2_PerRun < 1: p2_PerRun = 1
-    LoopTimes = (RunPerScript + p2_PerRun - 1) // p2_PerRun # Ceiling division usually better, but sticking to manual script logic
+    LoopTimes = (RunPerScript + p2_PerRun - 1) // p2_PerRun 
     if LoopTimes < 1: LoopTimes = 1
     
     PreviousGood = 0
     
-    # Initial VPN Connect if enabled
-    if vpn_enabled:
-         # new_location() called in loop, but maybe good to ensure connected first?
-         # Manual script calls new_location() at start of loop.
-         pass
+    # Initial VPN Connect if enabled (logic moved inside loop generally, but logging here)
+    if vpn_enabled and JOB_DEBUG_ENABLED:
+        log_detailed("VPN is enabled. Location switching will occur.")
 
     for i in range(LoopTimes):
         if stop_event.is_set():
+            if JOB_DEBUG_ENABLED:
+                log_detailed("Stop event detected. Exiting loop.")
             break
             
         starttime = datetime.datetime.now()
         
         if vpn_enabled:
-            # Manual switch logic
+            if JOB_DEBUG_ENABLED:
+                log_detailed(f"Batch {i+1}: Switching VPN location...")
             new_location()
+        
+        if JOB_DEBUG_ENABLED:
+            log_detailed(f"Batch {i+1}: Starting {num_threads} threads for {p2_PerRun} runs each.")
             
         run_multi_scripts(num_threads, p2_PerRun)
 
@@ -159,31 +161,47 @@ def start_job(job_config):
         print(f"{nowFormat}: {TimeRun:.0f}s {GoodThisLoop}/{RunThisLoop} ({GoodThisLoopPercent:.1f}%): "
               f"Overall: {count_good}/{WhereAt} ({PercentGood:.1f}%)")
               
-        # INTEGRATION: Update Queue Progress in DB/UI
         update_queue_progress(current_item_id, WhereAt, count_good, f"Running Batch {i+1}/{LoopTimes}")
 
-        # Write results to influx (Manual script does this)
         extract_poll_results(pollid)
         
         PreviousGood = count_good
 
-        # Adaptive Pause Logic from manual script
+        # Adaptive Pause Logic
+        is_adaptive = False
+        pause_duration = p2_pause
+        
         if int(GoodThisLoopPercent) < 60 and not use_tor:
+            is_adaptive = True
             if p2_pause < 75:
-                print("Sleep 70 (Adaptive)")
-                time.sleep(70)
+                pause_duration = 70
             elif p2_pause < 120:
-                print("Sleep 300 (Adaptive)")
-                time.sleep(300)
+                pause_duration = 300
             else:
-                print("Sleep 600 (Adaptive)")
-                time.sleep(600)
-        else:
-            time.sleep(p2_pause)
+                pause_duration = 600
+        
+        if JOB_DEBUG_ENABLED:
+            log_detailed(f"Batch {i+1} finished. Success Rate: {GoodThisLoopPercent:.1f}%. Pausing for {pause_duration}s (Adaptive={is_adaptive}).")
+            
+        time.sleep(pause_duration)
+        
+        if JOB_DEBUG_ENABLED:
+             log_detailed(f"Pause complete. Resuming...")
 
+
+def log_detailed(msg):
+    """
+    Log a detailed debug message if debug mode is enabled.
+    """
+    if JOB_DEBUG_ENABLED:
+        now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"[DEBUG {now}] {msg}")
 
 def print_debug(msg, levelofdetail=2):
-    if print_debug_msg and levelofdetail <= print_debug_level:
+    # Legacy wrapper for old manual script calls, redirected to detailed log if enabled
+    if JOB_DEBUG_ENABLED:
+        log_detailed(msg)
+    elif print_debug_msg and levelofdetail <= print_debug_level:
         now = datetime.datetime.now()
         nowFormat = now.strftime("%H:%M:%S")
         print(f"{nowFormat}: {msg}")
@@ -208,24 +226,21 @@ def new_location():
     if not vpn_enabled:
         return
         
-    # Manual script logic: if vpnmode 1, find 'us' location
     if vpnmode == 1:
-        # Simple loop to find next US location
-        # Note: Be careful of infinite loop if no US locations exist
         start_node = vpnlocat
         while True:
-            # Check current
             if vpnloc[vpnlocat]["loc"] == "us":
                 break
-            # Advance
             vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
-            # Safety break
             if vpnlocat == start_node:
                 break
+    
+    alias = vpnloc[vpnlocat]["alias"]
+    if JOB_DEBUG_ENABLED:
+        log_detailed(f"VPN Switching to alias: {alias} (loc: {vpnloc[vpnlocat].get('loc')})")
 
     try:
-        # connect_alias from expressvpn module
-        connect_alias(vpnloc[vpnlocat]["alias"])
+        connect_alias(alias)
     except Exception as e:
         print(f"VPN Connection Error: {e}")
 
@@ -241,9 +256,13 @@ def auto_voter(thread_id, RunCount):
     BATCH_GOOD = BATCH_BAD = BATCH_TOTAL = 0
     VOTE_BATCH=[]
 
-    time.sleep(random.randint(1,8))
+    # Thread startup delay
+    start_delay = random.randint(1,8)
+    if JOB_DEBUG_ENABLED:
+        log_detailed(f"[Thread {thread_id}] Starting up. Sleeping {start_delay}s.")
+    time.sleep(start_delay)
 
-    for _ in range(RunCount):
+    for i in range(RunCount):
         if stop_event.is_set():
             break
 
@@ -251,16 +270,31 @@ def auto_voter(thread_id, RunCount):
             timeoutseconds = random.randint(RandomMin, RandomMax)
         else:
             timeoutseconds = shortPauseSeconds
+        
+        if JOB_DEBUG_ENABLED:
+            log_detailed(f"[Thread {thread_id}] Vote attempt {i+1}/{RunCount}. Timeout set to {timeoutseconds}s.")
 
         try:
             session = requests.Session()
             if use_tor:
-                with Controller.from_port(port=9051) as controller:
-                    controller.authenticate(password="welcomeTomyPa55word")
-                    controller.signal(Signal.NEWNYM)
-                    time.sleep(tor_delay)
-                session.proxies.update(proxies)
+                try:
+                    if JOB_DEBUG_ENABLED:
+                        log_detailed(f"[Thread {thread_id}] TOR: Signal NEWNYM...")
+                    with Controller.from_port(port=9051) as controller:
+                        controller.authenticate(password="welcomeTomyPa55word")
+                        controller.signal(Signal.NEWNYM)
+                        time.sleep(tor_delay)
+                    session.proxies.update(proxies)
+                    if JOB_DEBUG_ENABLED:
+                        log_detailed(f"[Thread {thread_id}] TOR: Proxy updated.")
+                except Exception as tor_e:
+                     if JOB_DEBUG_ENABLED:
+                        log_detailed(f"[Thread {thread_id}] TOR Error: {tor_e}")
 
+            # Initial Page Load
+            if JOB_DEBUG_ENABLED:
+                log_detailed(f"[Thread {thread_id}] GET https://poll.fm/{pollid}")
+            
             resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
             resp.raise_for_status()
 
@@ -294,8 +328,24 @@ def auto_voter(thread_id, RunCount):
                     "Upgrade-Insecure-Requests": "1"
                 }
                 
-                print_debug(payload, 2)
+                # --- DETAILED DEBUG OF PAYLOAD AND HEADERS ---
+                if JOB_DEBUG_ENABLED:
+                    debug_info = {
+                        "payload": payload,
+                        "headers": headers
+                    }
+                    log_detailed(f"[Thread {thread_id}] Submitting Vote. Data:\n{json.dumps(debug_info, indent=2)}")
+                else:
+                    print_debug(payload, 2)
+                
                 vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers)
+                
+                # --- DETAILED DEBUG OF RESPONSE ---
+                if JOB_DEBUG_ENABLED:
+                    log_detailed(f"[Thread {thread_id}] Response Code: {vote_resp.status_code}")
+                    log_detailed(f"[Thread {thread_id}] Response URL: {vote_resp.url}")
+                    # log_detailed(f"[Thread {thread_id}] Response Headers: {vote_resp.headers}") # Verbose, maybe skip?
+                
                 soup_vote = BeautifulSoup(vote_resp.text, 'html.parser')
 
                 VOTE_GOOD = 0
@@ -309,18 +359,20 @@ def auto_voter(thread_id, RunCount):
                     NoVoteRun += 1
 
                 if VOTE_GOOD == 1:
-                    print_debug(f"Good: {vote_resp.url}", 1)
+                    if JOB_DEBUG_ENABLED:
+                        log_detailed(f"[Thread {thread_id}] SUCCESS: Vote counted!")
+                    else:
+                        print_debug(f"Good: {vote_resp.url}", 1)
                 else:
-                    print_debug(f"Failed: {vote_resp.url}", 1)
+                    if JOB_DEBUG_ENABLED:
+                        log_detailed(f"[Thread {thread_id}] FAIL: Vote not counted. URL: {vote_resp.url}")
+                    else:
+                        print_debug(f"Failed: {vote_resp.url}", 1)
 
-                # Manual Logic: Switch VPN triggers?
-                # The manual script had logic:
-                # if start_process==1 and ((vpn_maxvotes and vpn_votecnt >= vpn_maxvotes) or (not use_tor and NoVoteRun > 3)):
-                #    switchvpn = True
-                # In this ported version, we use the Batch Mode (start_process=2) logic mainly.
-                # But if we strictly want to support the inline switching:
                 if (vpn_enabled and vpn_maxvotes > 0 and vpn_votecnt >= vpn_maxvotes) or (vpn_enabled and not use_tor and NoVoteRun > 3):
                      switchvpn = True
+                     if JOB_DEBUG_ENABLED:
+                        log_detailed(f"[Thread {thread_id}] VPN Switch Condition Met (Failed/MaxVotes). Flagging for switch.")
 
                 # Influx Record Building
                 title = (soup_vote.title.string.strip() if soup_vote.title and soup_vote.title.string else "Unknown_Poll")
@@ -330,13 +382,21 @@ def auto_voter(thread_id, RunCount):
                 if BATCH_TOTAL >= BATCH_SIZE:
                     influx_write_records(VOTE_BATCH)
                     VOTE_BATCH.clear()
+            else:
+                 if JOB_DEBUG_ENABLED:
+                    log_detailed(f"[Thread {thread_id}] FAIL: Vote button not found on page.")
+
 
             if switchvpn:
+                if JOB_DEBUG_ENABLED:
+                    log_detailed(f"[Thread {thread_id}] Triggering NEW LOCATION from inside thread (uncommon in batch mode).")
                 new_location()
                 switchvpn = False
 
             # CoolDown Logic
             if CoolDownCount > 0 and NoVoteRun >= CoolDownCount:
+                if JOB_DEBUG_ENABLED:
+                     log_detailed(f"[Thread {thread_id}] Cooldown triggered! Failed {NoVoteRun} times. Sleeping {Cooldown}s.")
                 influx_write_records(VOTE_BATCH)
                 VOTE_BATCH.clear()
                 time.sleep(Cooldown)
@@ -345,13 +405,18 @@ def auto_voter(thread_id, RunCount):
             if cntToPause == 0:
                 time.sleep(timeoutseconds)
             elif (cntpause == cntToPause):
+                if JOB_DEBUG_ENABLED:
+                     log_detailed(f"[Thread {thread_id}] Long pause triggered ({longPauseSeconds}s).")
                 influx_write_records(VOTE_BATCH)
                 VOTE_BATCH.clear()
                 time.sleep(longPauseSeconds)
                 cntpause = 0
 
         except Exception as e:
-            print(f"Voting error: {e}")
+            if JOB_DEBUG_ENABLED:
+                 log_detailed(f"[Thread {thread_id}] EXCEPTION: {e}")
+            else:
+                print(f"Voting error: {e}")
             time.sleep(2)
 
     influx_write_records(VOTE_BATCH)
@@ -369,8 +434,6 @@ def build_influx_record(VOTE_GOOD, title):
     unix_time = int(time.time() * 1e9)
     title_clean = influx_clean_str(title)
     
-    # Needs a fallback if poll pollToRun index access fails, manual script assumed pollToRun global index
-    # We will just use the pollid as the name if we can't find a better one
     answer_script_name = f"Poll_{pollid}"
 
     influx_str = (
@@ -394,7 +457,10 @@ def influx_write_records(records):
         write_api = client.write_api(write_options=SYNCHRONOUS)
         write_api.write(bucket=INFLUX_BUCKET, record=records)
     except Exception as e:
-        print(f"InfluxDB error: {e}")
+        if JOB_DEBUG_ENABLED:
+             log_detailed(f"InfluxDB Error: {e}")
+        else:
+            print(f"InfluxDB error: {e}")
 
 def extract_poll_results(pollid):
     url = f"https://poll.fm/{pollid}/results"
@@ -415,7 +481,6 @@ def extract_poll_results(pollid):
         for li in soup.find_all('li', class_='pds-feedback-group'):
             answer_text = li.find('span', class_='pds-answer-text').text.strip()
             votes_text = li.find('span', class_='pds-feedback-votes').text.strip()
-            # percent = li.find('span', class_='pds-feedback-per').text.strip()
 
             votematch = re.search(r'\\d[\\d,]*', votes_text)
             if votematch:
@@ -447,7 +512,10 @@ def extract_poll_results(pollid):
         influx_write_records(influx_batch)
 
     except Exception as e:
-        print(f"Results Error: {e}")
+        if JOB_DEBUG_ENABLED:
+             log_detailed(f"Poll Results Error: {e}")
+        else:
+             print(f"Results Error: {e}")
 
 def update_queue_progress(item_id, votes_cast, votes_success, status):
     """
@@ -486,4 +554,3 @@ def update_queue_progress(item_id, votes_cast, votes_success, status):
             db.close()
     except Exception as e:
         print(f"Failed to update progress: {e}")
-

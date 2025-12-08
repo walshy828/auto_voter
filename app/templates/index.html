@@ -717,6 +717,14 @@
               <input type="checkbox" class="form-check-input" id="q_use_tor">
               <label class="form-check-label" for="q_use_tor">Use Tor</label>
             </div>
+            <div class="form-check mb-3">
+              <input type="checkbox" class="form-check-input" id="q_debug">
+              <label class="form-check-label" for="q_debug">
+                Use Debug Mode
+                <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip" 
+                   title="Enable detailed logging of votes, headers, payloads, and pauses."></i>
+              </label>
+            </div>
 
             <div class="mb-3">
               <label for="q_scheduled_at" class="form-label">
@@ -974,6 +982,14 @@
                   <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="detailsUseTor" disabled>
                     <label class="form-check-label small">Use Tor</label>
+                  </div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-2">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="detailsDebug" disabled>
+                    <label class="form-check-label small">Debug Mode</label>
                   </div>
                 </div>
               </div>

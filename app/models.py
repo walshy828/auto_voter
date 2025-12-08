@@ -97,6 +97,7 @@ class QueueItem(Base):
     pause = Column(Integer, default=0)
     use_vpn = Column(Integer, default=1)
     use_tor = Column(Integer, default=0)
+    debug = Column(Boolean, default=False)
     status = Column(SQLEnum(QueueStatus), default=QueueStatus.queued)
     # PID of the running worker process (if running)
     pid = Column(Integer, nullable=True)
