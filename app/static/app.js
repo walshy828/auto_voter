@@ -772,6 +772,7 @@ async function refreshWorkers() {
       openLogStream(w.id);
     });
 
+    const dl = document.createElement('a');
     dl.className = 'btn btn-sm btn-outline-secondary';
     dl.innerHTML = '<i class="bi bi-download"></i> Download';
     // Use session cookie auth (browser handles this automatically for links)
