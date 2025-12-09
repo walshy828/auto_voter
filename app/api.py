@@ -1420,20 +1420,68 @@ def worker_stream(worker_id):
     return Response(generate(), mimetype='text/event-stream')
 
 
+@app.route('/settings/days_to_purge', methods=['GET', 'POST'])
+@require_auth
+def settings_days_to_purge():
+    from app.models import SystemSetting
+    db = SessionLocal()
+    try:
+        if request.method == 'POST':
+            data = request.json or {}
+            val = int(data.get('value', 7))
+            setting = db.query(SystemSetting).filter(SystemSetting.key == 'days_to_purge').first()
+            if not setting:
+                setting = SystemSetting(key='days_to_purge')
+                db.add(setting)
+            setting.value = str(val)
+            db.commit()
+            return jsonify({'value': val})
+        else:
+            setting = db.query(SystemSetting).filter(SystemSetting.key == 'days_to_purge').first()
+            val = int(setting.value) if setting and setting.value else 7
+            return jsonify({'value': val})
+    except Exception as e:
+        return abort(500, str(e))
+    finally:
+        db.close()
+
+
 @app.route('/workers/<int:worker_id>/download', methods=['GET'])
 @require_auth
 def worker_download_log(worker_id):
     db = SessionLocal()
     w = db.query(WorkerProcess).filter(WorkerProcess.id == worker_id).first()
     db.close()
-    if not w or not w.log_path or not os.path.exists(w.log_path):
-        return abort(404, 'Log file not found')
+    
+    if not w:
+        print(f"[DOWNLOAD] Worker {worker_id} not found in DB")
+        return abort(404, 'Worker not found')
+        
+    print(f"[DOWNLOAD] Worker {worker_id} log_path: {w.log_path}")
+    
+    if not w.log_path:
+        print(f"[DOWNLOAD] Worker {worker_id} has no log_path")
+        return abort(404, 'Log path not set')
+        
+    if not os.path.exists(w.log_path):
+        print(f"[DOWNLOAD] Log file does not exist at: {w.log_path}")
+        # Try to fallback to searching in relative logs dir if absolute failed
+        rel_path = os.path.join(os.getcwd(), w.log_path)
+        if os.path.exists(rel_path):
+             print(f"[DOWNLOAD] Found at relative path: {rel_path}")
+             w.log_path = rel_path
+        else:
+             return abort(404, f'Log file not found at {w.log_path}')
     
     directory = os.path.dirname(w.log_path)
     filename = os.path.basename(w.log_path)
     
     from flask import send_from_directory
-    return send_from_directory(directory, filename, as_attachment=True, download_name=f"worker_{worker_id}_log.txt")
+    try:
+        return send_from_directory(directory, filename, as_attachment=True, download_name=f"worker_{worker_id}_log.txt")
+    except Exception as e:
+        print(f"[DOWNLOAD] send_from_directory failed: {e}")
+        return abort(404, f"Could not serve file: {e}")
 
 
 
