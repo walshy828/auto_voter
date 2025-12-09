@@ -772,15 +772,10 @@ async function refreshWorkers() {
       openLogStream(w.id);
     });
 
-    const dl = document.createElement('a'); // use 'a' for direct download link
     dl.className = 'btn btn-sm btn-outline-secondary';
     dl.innerHTML = '<i class="bi bi-download"></i> Download';
-    dl.href = `/workers/${w.id}/download?token=${getCookie('token') || ''}`; // Basic token passing if cookie not used by browser automatically for link
-    // Actually, auth is session or header based. For a simple link, session cookie is sent automatically.
-    // If token auth is required (API), we might need to fetch blob and save.
-    // But let's try direct link. If session is active, it works.
+    // Use session cookie auth (browser handles this automatically for links)
     dl.href = `/workers/${w.id}/download`;
-    // We can also add an onclick to fetch with auth header if needed, but standard link is better for download
     dl.target = '_blank';
 
     btns.appendChild(view);
