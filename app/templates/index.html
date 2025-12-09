@@ -420,171 +420,197 @@
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- Data Storage -->
-        <div class="accordion-item">
-          <h2 class="accordion-header">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-              data-bs-target="#collapseData">
-              <i class="bi bi-database-fill me-2"></i> Data Storage
-            </button>
-          </h2>
-          <div id="collapseData" class="accordion-collapse collapse" data-bs-parent="#settingsAccordion">
-            <div class="accordion-body">
-              <div class="card shadow-sm">
-                <div class="card-body">
-                  <h6 class="card-title">
-                    InfluxDB Configuration
-                    <i class="bi bi-question-circle text-muted" data-bs-toggle="tooltip"
-                      title="InfluxDB is used for time-series storage of poll results"></i>
-                  </h6>
-                  <p class="card-text small text-muted mb-3">
-                    <i class="bi bi-info-circle me-1"></i>
-                    Configure InfluxDB for storing historical poll results and analytics.
-                  </p>
+            <!-- Scheduler Status -->
+            <div class="card shadow-sm mt-3">
+              <div class="card-body">
+                <h6 class="card-title">
+                  Scheduler Status
+                  <i class="bi bi-question-circle text-muted" data-bs-toggle="tooltip"
+                    title="Information about the background job scheduler"></i>
+                </h6>
 
-                  <div class="mb-3">
-                    <label for="settingInfluxUrl" class="form-label">
-                      InfluxDB URL
-                      <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
-                        title="The HTTP endpoint of your InfluxDB server (e.g., http://localhost:8086)"></i>
-                    </label>
-                    <input type="text" class="form-control" id="settingInfluxUrl" placeholder="http://localhost:8086">
-                  </div>
-
-                  <div class="mb-3">
-                    <label for="settingInfluxOrg" class="form-label">
-                      Organization
-                      <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
-                        title="Your InfluxDB organization name"></i>
-                    </label>
-                    <input type="text" class="form-control" id="settingInfluxOrg" placeholder="your-org">
-                  </div>
-
-                  <div class="mb-3">
-                    <label for="settingInfluxBucket" class="form-label">
-                      Bucket
-                      <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
-                        title="The InfluxDB bucket where poll data will be stored"></i>
-                    </label>
-                    <input type="text" class="form-control" id="settingInfluxBucket" placeholder="your-bucket">
-                  </div>
-
-                  <div class="mb-3">
-                    <label for="settingInfluxToken" class="form-label">
-                      API Token
-                      <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
-                        title="Your InfluxDB API token with write permissions. This is stored securely and not displayed after saving."></i>
-                    </label>
-                    <input type="password" class="form-control" id="settingInfluxToken"
-                      placeholder="Your InfluxDB token">
-                    <div class="form-text">
-                      <i class="bi bi-shield-lock"></i> Token is encrypted and never displayed after saving
-                    </div>
-                  </div>
-
-                  <button class="btn btn-primary w-100" type="button" id="btnSaveInfluxSettings">
-                    <i class="bi bi-save"></i> Save InfluxDB Settings
-                  </button>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Status:</span>
+                  <span id="schedulerRunStatus" class="badge bg-secondary">Unknown</span>
                 </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Next Run:</span>
+                  <span id="schedulerNextRun" class="text-muted small">-</span>
+                </div>
+
+                <button class="btn btn-sm btn-outline-secondary w-100" type="button" id="btnRefreshSchedulerRunInfo">
+                  <i class="bi bi-arrow-clockwise"></i> Refresh Status
+                </button>
               </div>
             </div>
+
           </div>
         </div>
-
-        <!-- Voting Behavior -->
-        <div class="accordion-item">
-          <h2 class="accordion-header">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-              data-bs-target="#collapseVoting">
-              <i class="bi bi-clock-history me-2"></i> Voting Behavior
-            </button>
-          </h2>
-          <div id="collapseVoting" class="accordion-collapse collapse" data-bs-parent="#settingsAccordion">
-            <div class="accordion-body">
-              <div class="card shadow-sm">
-                <div class="card-body">
-                  <h6 class="card-title">
-                    Voting Timing & Patterns
-                    <i class="bi bi-question-circle text-muted" data-bs-toggle="tooltip"
-                      title="Configure how the voting bot behaves to appear more human-like"></i>
-                  </h6>
-                  <p class="card-text small text-muted mb-3">
-                    <i class="bi bi-info-circle me-1"></i>
-                    These settings control voting patterns and delays to avoid detection.
-                  </p>
-
-                  <div class="mb-3">
-                    <label for="settingVpnMode" class="form-label">
-                      VPN Location Mode
-                      <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
-                        title="US Only: Uses only US VPN servers. Expanded: Uses VPN servers from all available countries."></i>
-                    </label>
-                    <select class="form-select" id="settingVpnMode">
-                      <option value="1">🇺🇸 US Only</option>
-                      <option value="2">🌍 Expanded (All Locations)</option>
-                    </select>
-                    <div class="form-text">Choose VPN server locations for voting</div>
-                  </div>
-
-                  <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                      <label for="settingCooldownCount" class="form-label">
-                        Cooldown Iterations
-                        <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
-                          title="Number of times to repeat the cooldown cycle between votes"></i>
-                      </label>
-                      <input type="number" class="form-control" id="settingCooldownCount" min="1" max="10" value="3">
-                    </div>
-
-                    <div class="col-md-6">
-                      <label for="settingCooldown" class="form-label">
-                        Cooldown Duration (sec)
-                        <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
-                          title="Seconds to wait during each cooldown iteration"></i>
-                      </label>
-                      <input type="number" class="form-control" id="settingCooldown" min="1" max="300" value="92">
-                    </div>
-                  </div>
-
-                  <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                      <label for="settingCntToPause" class="form-label">
-                        Votes Before Long Pause
-                        <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
-                          title="After this many votes, the script will take a longer pause"></i>
-                      </label>
-                      <input type="number" class="form-control" id="settingCntToPause" min="1" max="100" value="1">
-                    </div>
-
-                    <div class="col-md-6">
-                      <label for="settingLongPause" class="form-label">
-                        Long Pause Duration (sec)
-                        <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
-                          title="Duration of the extended pause to appear more human-like"></i>
-                      </label>
-                      <input type="number" class="form-control" id="settingLongPause" min="1" max="600" value="90">
-                    </div>
-                  </div>
-
-                  <div class="alert alert-info small mb-3">
-                    <i class="bi bi-lightbulb"></i> <strong>Tip:</strong> Higher values make voting slower but more
-                    natural-looking. Lower values are faster but may be detected.
-                  </div>
-
-                  <button class="btn btn-primary w-100" type="button" id="btnSaveVotingSettings">
-                    <i class="bi bi-save"></i> Save Voting Settings
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
       </div>
+
+      <!-- Data Storage -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+            data-bs-target="#collapseData">
+            <i class="bi bi-database-fill me-2"></i> Data Storage
+          </button>
+        </h2>
+        <div id="collapseData" class="accordion-collapse collapse" data-bs-parent="#settingsAccordion">
+          <div class="accordion-body">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <h6 class="card-title">
+                  InfluxDB Configuration
+                  <i class="bi bi-question-circle text-muted" data-bs-toggle="tooltip"
+                    title="InfluxDB is used for time-series storage of poll results"></i>
+                </h6>
+                <p class="card-text small text-muted mb-3">
+                  <i class="bi bi-info-circle me-1"></i>
+                  Configure InfluxDB for storing historical poll results and analytics.
+                </p>
+
+                <div class="mb-3">
+                  <label for="settingInfluxUrl" class="form-label">
+                    InfluxDB URL
+                    <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                      title="The HTTP endpoint of your InfluxDB server (e.g., http://localhost:8086)"></i>
+                  </label>
+                  <input type="text" class="form-control" id="settingInfluxUrl" placeholder="http://localhost:8086">
+                </div>
+
+                <div class="mb-3">
+                  <label for="settingInfluxOrg" class="form-label">
+                    Organization
+                    <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                      title="Your InfluxDB organization name"></i>
+                  </label>
+                  <input type="text" class="form-control" id="settingInfluxOrg" placeholder="your-org">
+                </div>
+
+                <div class="mb-3">
+                  <label for="settingInfluxBucket" class="form-label">
+                    Bucket
+                    <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                      title="The InfluxDB bucket where poll data will be stored"></i>
+                  </label>
+                  <input type="text" class="form-control" id="settingInfluxBucket" placeholder="your-bucket">
+                </div>
+
+                <div class="mb-3">
+                  <label for="settingInfluxToken" class="form-label">
+                    API Token
+                    <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                      title="Your InfluxDB API token with write permissions. This is stored securely and not displayed after saving."></i>
+                  </label>
+                  <input type="password" class="form-control" id="settingInfluxToken" placeholder="Your InfluxDB token">
+                  <div class="form-text">
+                    <i class="bi bi-shield-lock"></i> Token is encrypted and never displayed after saving
+                  </div>
+                </div>
+
+                <button class="btn btn-primary w-100" type="button" id="btnSaveInfluxSettings">
+                  <i class="bi bi-save"></i> Save InfluxDB Settings
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Voting Behavior -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+            data-bs-target="#collapseVoting">
+            <i class="bi bi-clock-history me-2"></i> Voting Behavior
+          </button>
+        </h2>
+        <div id="collapseVoting" class="accordion-collapse collapse" data-bs-parent="#settingsAccordion">
+          <div class="accordion-body">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <h6 class="card-title">
+                  Voting Timing & Patterns
+                  <i class="bi bi-question-circle text-muted" data-bs-toggle="tooltip"
+                    title="Configure how the voting bot behaves to appear more human-like"></i>
+                </h6>
+                <p class="card-text small text-muted mb-3">
+                  <i class="bi bi-info-circle me-1"></i>
+                  These settings control voting patterns and delays to avoid detection.
+                </p>
+
+                <div class="mb-3">
+                  <label for="settingVpnMode" class="form-label">
+                    VPN Location Mode
+                    <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                      title="US Only: Uses only US VPN servers. Expanded: Uses VPN servers from all available countries."></i>
+                  </label>
+                  <select class="form-select" id="settingVpnMode">
+                    <option value="1">🇺🇸 US Only</option>
+                    <option value="2">🌍 Expanded (All Locations)</option>
+                  </select>
+                  <div class="form-text">Choose VPN server locations for voting</div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                  <div class="col-md-6">
+                    <label for="settingCooldownCount" class="form-label">
+                      Cooldown Iterations
+                      <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                        title="Number of times to repeat the cooldown cycle between votes"></i>
+                    </label>
+                    <input type="number" class="form-control" id="settingCooldownCount" min="1" max="10" value="3">
+                  </div>
+
+                  <div class="col-md-6">
+                    <label for="settingCooldown" class="form-label">
+                      Cooldown Duration (sec)
+                      <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                        title="Seconds to wait during each cooldown iteration"></i>
+                    </label>
+                    <input type="number" class="form-control" id="settingCooldown" min="1" max="300" value="92">
+                  </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                  <div class="col-md-6">
+                    <label for="settingCntToPause" class="form-label">
+                      Votes Before Long Pause
+                      <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                        title="After this many votes, the script will take a longer pause"></i>
+                    </label>
+                    <input type="number" class="form-control" id="settingCntToPause" min="1" max="100" value="1">
+                  </div>
+
+                  <div class="col-md-6">
+                    <label for="settingLongPause" class="form-label">
+                      Long Pause Duration (sec)
+                      <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                        title="Duration of the extended pause to appear more human-like"></i>
+                    </label>
+                    <input type="number" class="form-control" id="settingLongPause" min="1" max="600" value="90">
+                  </div>
+                </div>
+
+                <div class="alert alert-info small mb-3">
+                  <i class="bi bi-lightbulb"></i> <strong>Tip:</strong> Higher values make voting slower but more
+                  natural-looking. Lower values are faster but may be detected.
+                </div>
+
+                <button class="btn btn-primary w-100" type="button" id="btnSaveVotingSettings">
+                  <i class="bi bi-save"></i> Save Voting Settings
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
+  </div>
 
   </div>
 
@@ -721,8 +747,8 @@
               <input type="checkbox" class="form-check-input" id="q_debug">
               <label class="form-check-label" for="q_debug">
                 Use Debug Mode
-                <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip" 
-                   title="Enable detailed logging of votes, headers, payloads, and pauses."></i>
+                <i class="bi bi-question-circle-fill text-info" data-bs-toggle="tooltip"
+                  title="Enable detailed logging of votes, headers, payloads, and pauses."></i>
               </label>
             </div>
 

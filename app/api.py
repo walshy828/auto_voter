@@ -399,7 +399,8 @@ def start_scheduler_if_needed():
     
     interval = _get_scheduler_interval()
     print(f"[SCHEDULER] Starting scheduler with {interval}s interval (PID: {os.getpid()})...")
-    scheduler.add_job(_scheduled_pick_and_start, 'interval', seconds=interval, id='poll_queue_runner', replace_existing=True)
+    # Run immediately (next_run_time=now) so we don't wait for the first interval
+    scheduler.add_job(_scheduled_pick_and_start, 'interval', seconds=interval, id='poll_queue_runner', replace_existing=True, next_run_time=datetime.datetime.now())
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown(wait=False))
     _SCHEDULER_STARTED = True
@@ -630,6 +631,26 @@ def get_concurrency_setting():
         })
     finally:
         db.close()
+@app.route('/scheduler/run-info', methods=['GET'])
+@require_auth
+def get_scheduler_run_info():
+    """Get scheduler next run time and last run time (if available)."""
+    try:
+        job = scheduler.get_job('poll_queue_runner')
+        if not job:
+            return jsonify({'error': 'Job not found'})
+            
+        return jsonify({
+            'next_run_time': to_est_string(job.next_run_time),
+            # APScheduler 3.x doesn't easily expose 'last_run_time' publicly on the job object 
+            # without listener tracking, but we can infer or just show next_run.
+            # However, for user convenience, showing next_run is the most critical.
+            # If we want last_run, we'd need to track it manually or use events.
+            # For now, let's return next_run.
+            'status': 'running' if scheduler.running else 'stopped'
+        })
+    except Exception as e:
+        return abort(500, str(e))
 
 
 @app.route('/settings/concurrency', methods=['POST'])

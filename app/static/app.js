@@ -1617,9 +1617,38 @@ if (settingAutoSwitch) {
   });
 }
 
+// Load Scheduler Run Info
+async function loadSchedulerRunInfo() {
+  try {
+    const res = await authedFetch('/scheduler/run-info');
+    const data = await res.json();
+
+    if (data.error) {
+      document.getElementById('schedulerRunStatus').textContent = 'Error';
+      document.getElementById('schedulerRunStatus').className = 'badge bg-danger';
+      return;
+    }
+
+    const statusEl = document.getElementById('schedulerRunStatus');
+    statusEl.textContent = data.status.toUpperCase();
+    statusEl.className = data.status === 'running' ? 'badge bg-success' : 'badge bg-warning text-dark';
+
+    document.getElementById('schedulerNextRun').textContent = data.next_run_time || 'None';
+
+  } catch (e) {
+    console.error('Failed to load scheduler info:', e);
+    document.getElementById('schedulerRunStatus').textContent = 'Error';
+  }
+}
+
+document.getElementById('btnRefreshSchedulerRunInfo')?.addEventListener('click', loadSchedulerRunInfo);
+
 // Load settings when settings section is shown
 async function loadAllSettings() {
   try {
+    // Load Scheduler Info
+    loadSchedulerRunInfo();
+
     // Load InfluxDB settings
     const influxRes = await authedFetch('/settings/influxdb');
     const influxData = await influxRes.json();
