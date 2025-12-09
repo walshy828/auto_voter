@@ -37,8 +37,8 @@ if expressvpn status &>/dev/null; then
     expressvpn preferences set auto_connect false || true
     expressvpn preferences set preferred_protocol auto || true
     expressvpn preferences set send_diagnostics false || true
-    # Force disable network lock
-    expressvpn preferences set network_lock default || false
+    # Network lock not available in Docker containers, ignore failure
+    expressvpn preferences set network_lock default || echo "network lock not available"
     
 else
     echo "WARNING: ExpressVPN daemon not responding, skipping preference configuration"
