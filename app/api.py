@@ -794,7 +794,7 @@ def login():
             return abort(401, 'invalid credentials')
         login_user(u)
         print(f"[LOGIN] User {username} logged in successfully. Session ID: {request.cookies.get('session', 'NO SESSION COOKIE')}")
-        return jsonify({'ok': True})
+        return jsonify({'ok': True, 'token': ADMIN_TOKEN})
     finally:
         db.close()
 

@@ -1132,7 +1132,13 @@ document.getElementById('saveCredentials').addEventListener('click', async () =>
   try {
     const r = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ username, password }) });
     if (r.ok) {
+      const data = await r.json();
       showToast('Logged in', 'success');
+
+      if (data.token) {
+        sessionStorage.setItem('AUTO_VOTER_TOKEN', data.token);
+      }
+
       loginModalShown = false;
       const m = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
       m.hide();
