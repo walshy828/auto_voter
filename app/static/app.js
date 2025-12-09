@@ -775,17 +775,30 @@ async function refreshWorkers() {
     const dl = document.createElement('a');
     dl.className = 'btn btn-sm btn-outline-secondary';
     dl.innerHTML = '<i class="bi bi-download"></i> Download';
+    dl.href = '#';
+    dl.onclick = async (e) => {
+      e.preventDefault();
+      try {
+        showToast('Starting download...', 'info');
+        const res = await authedFetch(`/workers/${w.id}/download`);
+        if (!res.ok) throw new Error('Download failed');
 
-    // Check for token in sessionStorage to support token-based auth
-    const token = sessionStorage.getItem('AUTO_VOTER_TOKEN');
-    if (token) {
-      dl.href = `/workers/${w.id}/download?token=${token}`;
-    } else {
-      // Fallback to cookie-based auth
-      dl.href = `/workers/${w.id}/download`;
-    }
-
-    dl.target = '_blank';
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `worker_${w.id}_log.txt`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        showToast('Download complete', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to download log: ' + err.message, 'danger');
+      }
+    };
 
     btns.appendChild(view);
     btns.appendChild(dl);
