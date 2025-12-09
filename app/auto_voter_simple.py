@@ -17,7 +17,7 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 from expressvpn import connect_alias
 import app.config as config
 from app.db import SessionLocal
-from app.models import QueueItem
+from app.models import QueueItem, QueueStatus
 
 # --- Global Configs (Defaults) --- #
 pollToRun = 0
@@ -313,10 +313,13 @@ def auto_voter(thread_id, RunCount):
             session = requests.Session()
             # Explicitly clear any cookies (should be empty, but being defensive)
             session.cookies.clear()
-            # Clear any cached connections
-            session.close()
-            # Create new session to ensure no connection pooling issues
-            session = requests.Session()
+            # Force a fresh TCP connection every time
+            adapter = requests.adapters.HTTPAdapter(max_retries=1)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+
+            # set the connection header to close
+            session.headers.update({'Connection': 'close'})
             
             if use_tor:
                 try:
