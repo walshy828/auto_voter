@@ -338,7 +338,7 @@ def auto_voter(thread_id, RunCount):
             vote_button = soup.find('a', attrs={'data-vote': True})
 
             if vote_button:
-                t = int(time.time() * 1000) % 50000
+                #t = int(time.time() * 1000) % 50000
                 data_vote = json.loads(html.unescape(vote_button['data-vote']))
                 payload = {
                     "va": data_vote.get('at'),
@@ -347,7 +347,8 @@ def auto_voter(thread_id, RunCount):
                     "p": data_vote.get('id'),
                     "a": f"{answerid}",
                     "o": "",
-                    "t": t,
+                    #"t": t,
+                    "t": data_vote.get('t'),
                     "token": data_vote.get('n'),
                     #"token": random_hex(32),
                     "pz": pz
