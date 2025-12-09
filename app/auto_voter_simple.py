@@ -268,7 +268,6 @@ def new_location():
 def auto_voter(thread_id, RunCount):
     global vpn_votecnt, count_good
     cntpause = 0
-    switchvpn = False
     NoVoteRun = 0
     BATCH_GOOD = BATCH_BAD = BATCH_TOTAL = 0
     VOTE_BATCH=[]
@@ -321,6 +320,9 @@ def auto_voter(thread_id, RunCount):
             # Use threading Lock for stop check if needed? No, Event is thread safe.
             if stop_event.is_set(): return
 
+            # Random jitter before initial GET to spread out cookie requests and appear more human
+            if stop_event.wait(random.uniform(0.8, 1.8)): return
+
             resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
             resp.raise_for_status()
 
@@ -346,8 +348,8 @@ def auto_voter(thread_id, RunCount):
                     "a": f"{answerid}",
                     "o": "",
                     "t": t,
-                    #"token": data_vote.get('n'),
-                    "token": random_hex(32),
+                    "token": data_vote.get('n'),
+                    #"token": random_hex(32),
                     "pz": pz
                 }
 
@@ -408,9 +410,9 @@ def auto_voter(thread_id, RunCount):
                         print_debug(f"Failed: {vote_resp.url}", 1)
 
                 if (vpn_enabled and vpn_maxvotes > 0 and vpn_votecnt >= vpn_maxvotes) or (vpn_enabled and not use_tor and NoVoteRun > 3):
-                     switchvpn = True
+                     # Note: VPN switching is handled by start_job between batches, not by individual threads
                      if JOB_DEBUG_ENABLED:
-                        log_detailed(f"[Thread {thread_id}] VPN Switch Condition Met (Failed/MaxVotes). Flagging for switch.")
+                        log_detailed(f"[Thread {thread_id}] VPN Switch Condition Met (Failed/MaxVotes). Will switch after batch completes.")
 
                 # Influx Record Building
                 title = (soup_vote.title.string.strip() if soup_vote.title and soup_vote.title.string else "Unknown_Poll")
@@ -423,13 +425,6 @@ def auto_voter(thread_id, RunCount):
             else:
                  if JOB_DEBUG_ENABLED:
                     log_detailed(f"[Thread {thread_id}] FAIL: Vote button not found on page.")
-
-
-            if switchvpn:
-                if JOB_DEBUG_ENABLED:
-                    log_detailed(f"[Thread {thread_id}] Triggering NEW LOCATION from inside thread (uncommon in batch mode).")
-                new_location()
-                switchvpn = False
 
             # CoolDown Logic
             if CoolDownCount > 0 and NoVoteRun >= CoolDownCount:
