@@ -910,6 +910,7 @@ def auto_switch_settings():
 @require_auth
 def get_days_to_purge():
     """Get data retention setting."""
+    from app.models import SystemSetting
     db = SessionLocal()
     try:
         setting = db.query(SystemSetting).filter(SystemSetting.key == 'days_to_purge').first()
@@ -927,6 +928,7 @@ def get_days_to_purge():
 @require_auth
 def set_days_to_purge():
     """Set data retention setting."""
+    from app.models import SystemSetting
     db = SessionLocal()
     try:
         data = request.json
@@ -1420,30 +1422,7 @@ def worker_stream(worker_id):
     return Response(generate(), mimetype='text/event-stream')
 
 
-@app.route('/settings/days_to_purge', methods=['GET', 'POST'])
-@require_auth
-def settings_days_to_purge():
-    from app.models import SystemSetting
-    db = SessionLocal()
-    try:
-        if request.method == 'POST':
-            data = request.json or {}
-            val = int(data.get('value', 7))
-            setting = db.query(SystemSetting).filter(SystemSetting.key == 'days_to_purge').first()
-            if not setting:
-                setting = SystemSetting(key='days_to_purge')
-                db.add(setting)
-            setting.value = str(val)
-            db.commit()
-            return jsonify({'value': val})
-        else:
-            setting = db.query(SystemSetting).filter(SystemSetting.key == 'days_to_purge').first()
-            val = int(setting.value) if setting and setting.value else 7
-            return jsonify({'value': val})
-    except Exception as e:
-        return abort(500, str(e))
-    finally:
-        db.close()
+
 
 
 @app.route('/workers/<int:worker_id>/download', methods=['GET'])
