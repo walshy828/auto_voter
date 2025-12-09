@@ -309,9 +309,14 @@ def auto_voter(thread_id, RunCount):
             log_detailed(f"[Thread {thread_id}] Vote attempt {i+1}/{RunCount}. Timeout set to {timeoutseconds}s.")
 
         try:
+            # Create completely fresh session with no shared state
             session = requests.Session()
-            # Ensure completely fresh cookie jar for this request
+            # Explicitly clear any cookies (should be empty, but being defensive)
             session.cookies.clear()
+            # Clear any cached connections
+            session.close()
+            # Create new session to ensure no connection pooling issues
+            session = requests.Session()
             
             if use_tor:
                 try:
@@ -343,6 +348,11 @@ def auto_voter(thread_id, RunCount):
             resp.raise_for_status()
 
             PD_REQ_AUTH = resp.cookies.get("PD_REQ_AUTH")
+            
+            # Debug: Log cookie to verify uniqueness across threads
+            if JOB_DEBUG_ENABLED:
+                log_detailed(f"[Thread {thread_id}] Received PD_REQ_AUTH: {PD_REQ_AUTH[:8] if PD_REQ_AUTH else 'None'}...")
+            
             # Try to get PDjs_poll cookie from server, fallback to client-side timestamp generation if missing
             pd_poll_val = resp.cookies.get(f"PDjs_poll_{pollid}")
             if not pd_poll_val:
@@ -382,6 +392,10 @@ def auto_voter(thread_id, RunCount):
                 
                 # --- DETAILED DEBUG OF PAYLOAD AND HEADERS ---
                 if JOB_DEBUG_ENABLED:
+                    # Log the cookie being used to verify uniqueness
+                    cookie_preview = headers["Cookie"][:50] + "..." if len(headers["Cookie"]) > 50 else headers["Cookie"]
+                    log_detailed(f"[Thread {thread_id}] Using Cookie: {cookie_preview}")
+                    
                     debug_info = {
                         "payload": payload,
                         "headers": headers

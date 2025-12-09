@@ -66,6 +66,8 @@ def ensure_vpn_connected():
 
 def pick_and_start():
     """Pick and start queued voting items with locking and max worker check."""
+    print(f"[Scheduler Service] pick_and_start() ENTRY at {datetime.datetime.now()}")
+    
     # Use a file lock to prevent race conditions
     db_path = os.environ.get('AUTO_VOTER_DB', './data/auto_voter.db').replace('sqlite:///', '')
     lock_path = os.path.join(os.path.dirname(db_path), 'scheduler.lock')
@@ -528,9 +530,19 @@ def main():
         sched = BlockingScheduler()
         print("[Scheduler Service] BlockingScheduler created")
         
-        # Add queue item scheduler
-        sched.add_job(pick_and_start, 'interval', seconds=current_queue_interval, id='queue_runner')
-        print(f"[Scheduler Service] Queue scheduler started, interval={current_queue_interval}s")
+        # Add queue item scheduler with max_instances to prevent blocking
+        # Delay first run by 5 seconds to ensure initialization completes
+        first_run = datetime.datetime.now() + datetime.timedelta(seconds=5)
+        sched.add_job(
+            pick_and_start, 
+            'interval', 
+            seconds=current_queue_interval, 
+            id='queue_runner',
+            max_instances=3,  # Allow up to 3 concurrent instances to prevent total blocking
+            replace_existing=True,
+            next_run_time=first_run
+        )
+        print(f"[Scheduler Service] Queue scheduler started, interval={current_queue_interval}s, max_instances=3, first_run={first_run}")
         
         # Add poll results scheduler (checks config for interval)
         # Run every minute and let the function check if it should actually run
