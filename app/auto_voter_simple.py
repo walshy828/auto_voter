@@ -47,6 +47,10 @@ Cooldown = 95
 
 iPhoneUser = True
 
+def random_hex(length):
+    """Generate a random hexadecimal string of specified length."""
+    return ''.join(random.choice('0123456789abcdef') for _ in range(length))
+
 INFLUX_URL = config.INFLUX_URL
 INFLUX_TOKEN = config.INFLUX_TOKEN
 INFLUX_ORG = config.INFLUX_ORG
