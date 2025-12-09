@@ -46,26 +46,26 @@ fi
 
 # Add static routes for private networks to ensure Web UI remains accessible
 # This prevents the VPN from hijacking local traffic (split tunneling)
-# echo "Configuring split tunneling for local networks..."
-# GW=$(ip route show | grep default | awk '{print $3}' | head -n 1)
-# if [ -n "$GW" ]; then
-#     echo "Default gateway found: $GW"
-#     # Helper function to add route if not exists
-#     add_route() {
-#         # Check if route exists to avoid error
-#         if ! ip route show | grep -q "$1"; then
-#             # Try to add route, suppress stderr to avoid log spam
-#             ip route add "$1" via "$GW" dev eth0 >/dev/null 2>&1 || true
-#         fi
-#     }
+echo "Configuring split tunneling for local networks..."
+GW=$(ip route show | grep default | awk '{print $3}' | head -n 1)
+if [ -n "$GW" ]; then
+    echo "Default gateway found: $GW"
+    # Helper function to add route if not exists
+    add_route() {
+        # Check if route exists to avoid error
+        if ! ip route show | grep -q "$1"; then
+            # Try to add route, suppress stderr to avoid log spam
+            ip route add "$1" via "$GW" dev eth0 >/dev/null 2>&1 || true
+        fi
+    }
     
-#     add_route "10.0.0.0/8"
-#     add_route "172.16.0.0/12"
-#     add_route "192.168.0.0/16"
-#     echo "Local routes configuration completed"
-# else
-#     echo "WARNING: Could not determine default gateway, skipping route configuration"
-# fi
+    add_route "10.0.0.0/8"
+    add_route "172.16.0.0/12"
+    add_route "192.168.0.0/16"
+    echo "Local routes configuration completed"
+else
+    echo "WARNING: Could not determine default gateway, skipping route configuration"
+fi
 
 # Run database migrations
 echo "Running database migrations..."

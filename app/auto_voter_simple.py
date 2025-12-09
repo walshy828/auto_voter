@@ -1,6 +1,7 @@
 
 import threading
 import multiprocessing
+import os
 import random
 import string
 import time
@@ -18,6 +19,10 @@ from expressvpn import connect_alias
 import app.config as config
 from app.db import SessionLocal
 from app.models import QueueItem, QueueStatus
+
+# Detect if running in Docker (Docker sets /.dockerenv file)
+IN_DOCKER = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', False)
+
 
 # --- Global Configs (Defaults) --- #
 pollToRun = 0
@@ -309,17 +314,32 @@ def auto_voter(thread_id, RunCount):
             log_detailed(f"[Thread {thread_id}] Vote attempt {i+1}/{RunCount}. Timeout set to {timeoutseconds}s.")
 
         try:
-            # Create completely fresh session with no shared state
+            # Create completely fresh session with Docker-specific isolation
             session = requests.Session()
-            # Explicitly clear any cookies (should be empty, but being defensive)
-            session.cookies.clear()
-            # Force a fresh TCP connection every time
-            adapter = requests.adapters.HTTPAdapter(max_retries=1)
+            
+            # CRITICAL: Disable connection pooling at adapter level
+            # Docker's network layer can cache connections despite app-level settings
+            adapter = requests.adapters.HTTPAdapter(
+                pool_connections=1,      # Only 1 connection in pool
+                pool_maxsize=1,          # Max 1 connection total
+                max_retries=0,           # No retries (forces new connection on failure)
+                pool_block=False         # Don't block waiting for connection
+            )
             session.mount('http://', adapter)
             session.mount('https://', adapter)
-
-            # set the connection header to close
-            session.headers.update({'Connection': 'close'})
+            
+            # Force connection close after each request
+            session.headers.update({
+                'Connection': 'close',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            })
+            
+            # Disable keep-alive at session level
+            session.keep_alive = False
+            
+            # Clear any existing cookies (should be empty but defensive)
+            session.cookies.clear()
             
             if use_tor:
                 try:
@@ -354,7 +374,13 @@ def auto_voter(thread_id, RunCount):
             
             # Debug: Log cookie to verify uniqueness across threads
             if JOB_DEBUG_ENABLED:
-                log_detailed(f"[Thread {thread_id}] Received PD_REQ_AUTH: {PD_REQ_AUTH[:8] if PD_REQ_AUTH else 'None'}...")
+                # Show more details in Docker to diagnose connection reuse
+                if IN_DOCKER:
+                    log_detailed(f"[Thread {thread_id}] [DOCKER] Received PD_REQ_AUTH: {PD_REQ_AUTH[:8] if PD_REQ_AUTH else 'None'}... (full: {PD_REQ_AUTH})")
+                    log_detailed(f"[Thread {thread_id}] [DOCKER] Response headers: Connection={resp.headers.get('Connection')}, Set-Cookie={resp.headers.get('Set-Cookie', 'None')[:50]}")
+                else:
+                    log_detailed(f"[Thread {thread_id}] Received PD_REQ_AUTH: {PD_REQ_AUTH[:8] if PD_REQ_AUTH else 'None'}...")
+            
             
             # Try to get PDjs_poll cookie from server, fallback to client-side timestamp generation if missing
             pd_poll_val = resp.cookies.get(f"PDjs_poll_{pollid}")
