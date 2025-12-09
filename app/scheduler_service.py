@@ -78,15 +78,32 @@ def pick_and_start():
             print("[Scheduler Service] pick_and_start() called (Locked)")
             db = SessionLocal()
             try:
-                # Check if workers are paused
                 from app.models import SystemSetting
+                
+                # Update last run timestamp
+                now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                last_run_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_last_run').first()
+                if not last_run_setting:
+                    last_run_setting = SystemSetting(key='scheduler_last_run', value=now.isoformat())
+                    db.add(last_run_setting)
+                else:
+                    last_run_setting.value = now.isoformat()
+                db.commit()
+                
+                # Clear manual trigger flag if it was set
+                trigger_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_trigger_requested').first()
+                if trigger_setting and trigger_setting.value == 'true':
+                    print("[Scheduler Service] Manual trigger detected, processing...")
+                    trigger_setting.value = 'false'
+                    db.commit()
+                
+                # Check if workers are paused
                 paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
                 if paused_setting and paused_setting.value == 'true':
                     print("[Scheduler Service] Workers are paused, skipping queue processing")
                     return
                 
                 # 1. Check for scheduled jobs whose time has arrived
-                now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
                 scheduled_items = db.query(QueueItem).filter(
                     QueueItem.status == QueueStatus.scheduled,
                     QueueItem.scheduled_at <= now
@@ -134,6 +151,9 @@ def pick_and_start():
                     print("[Scheduler Service] No queued items found")
             finally:
                 db.close()
+            
+            # Update next run time after this execution completes
+            update_next_run_time()
             
             fcntl.flock(lock_file, fcntl.LOCK_UN)
         except Exception as e:
@@ -191,6 +211,29 @@ def run_poll_results_scheduler():
 
 # Global variable to track current interval
 current_queue_interval = 30
+
+
+def update_next_run_time():
+    """Update the scheduler_next_run setting in the database."""
+    global current_queue_interval
+    from app.models import SystemSetting
+    
+    db = SessionLocal()
+    try:
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        next_run = now + datetime.timedelta(seconds=current_queue_interval)
+        
+        next_run_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_next_run').first()
+        if not next_run_setting:
+            next_run_setting = SystemSetting(key='scheduler_next_run', value=next_run.isoformat())
+            db.add(next_run_setting)
+        else:
+            next_run_setting.value = next_run.isoformat()
+        db.commit()
+    except Exception as e:
+        print(f"[Scheduler Service] Error updating next_run: {e}")
+    finally:
+        db.close()
 
 
 def manage_scheduler_config(scheduler):

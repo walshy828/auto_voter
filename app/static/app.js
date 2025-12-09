@@ -1634,10 +1634,24 @@ async function loadSchedulerRunInfo() {
     }
 
     const statusEl = document.getElementById('schedulerRunStatus');
-    statusEl.textContent = data.status.toUpperCase();
-    statusEl.className = data.status === 'running' ? 'badge bg-success' : 'badge bg-warning text-dark';
 
-    document.getElementById('schedulerNextRun').textContent = data.next_run_time || 'None';
+    // Update status badge
+    if (data.status === 'running') {
+      statusEl.textContent = 'RUNNING';
+      statusEl.className = 'badge bg-success';
+    } else if (data.status === 'possibly_stopped') {
+      statusEl.textContent = 'STALE';
+      statusEl.className = 'badge bg-warning text-dark';
+    } else {
+      statusEl.textContent = data.status.toUpperCase();
+      statusEl.className = 'badge bg-secondary';
+    }
+
+    // Update last run time
+    document.getElementById('schedulerLastRun').textContent = data.last_run_time || 'Never';
+
+    // Update next run time
+    document.getElementById('schedulerNextRun').textContent = data.next_run_time || 'Unknown';
 
   } catch (e) {
     console.error('Failed to load scheduler info:', e);

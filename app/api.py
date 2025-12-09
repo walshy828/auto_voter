@@ -634,28 +634,81 @@ def get_concurrency_setting():
 @app.route('/scheduler/run-info', methods=['GET'])
 @require_auth
 def get_scheduler_run_info():
-    """Get scheduler next run time and last run time (if available)."""
+    """Get scheduler status from the separate scheduler service via database."""
+    from app.models import SystemSetting
+    db = SessionLocal()
     try:
-        if not scheduler.running:
-             return jsonify({
-                'next_run_time': None,
-                'status': 'stopped'
-            })
-
-        job = scheduler.get_job('poll_queue_runner')
-        if not job:
-            return jsonify({
-                'next_run_time': None,
-                'status': 'job_not_found'
-            })
+        # Read last_run timestamp
+        last_run_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_last_run').first()
+        last_run_str = None
+        if last_run_setting and last_run_setting.value:
+            try:
+                from dateutil import parser
+                last_run_dt = parser.isoparse(last_run_setting.value)
+                last_run_str = to_est_string(last_run_dt)
+            except:
+                last_run_str = last_run_setting.value
+        
+        # Read next_run timestamp
+        next_run_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_next_run').first()
+        next_run_str = None
+        if next_run_setting and next_run_setting.value:
+            try:
+                from dateutil import parser
+                next_run_dt = parser.isoparse(next_run_setting.value)
+                next_run_str = to_est_string(next_run_dt)
+            except:
+                next_run_str = next_run_setting.value
+        
+        # Determine status based on whether we have recent data
+        status = 'running'
+        if last_run_setting:
+            from dateutil import parser
+            last_run_dt = parser.isoparse(last_run_setting.value)
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            # If last run was more than 5 minutes ago, scheduler might be stopped
+            if (now - last_run_dt).total_seconds() > 300:
+                status = 'possibly_stopped'
+        else:
+            status = 'unknown'
             
         return jsonify({
-            'next_run_time': to_est_string(job.next_run_time),
-            'status': 'running'
+            'last_run_time': last_run_str,
+            'next_run_time': next_run_str,
+            'status': status
         })
     except Exception as e:
         print(f"[API ERROR] get_scheduler_run_info: {e}")
         return abort(500, str(e))
+    finally:
+        db.close()
+
+
+@app.route('/scheduler/trigger', methods=['POST'])
+@require_auth
+def trigger_scheduler():
+    """Request the scheduler service to run immediately by setting a database flag."""
+    from app.models import SystemSetting
+    db = SessionLocal()
+    try:
+        print("[API] Manual scheduler trigger requested")
+        
+        # Set the trigger flag in the database
+        trigger_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_trigger_requested').first()
+        if not trigger_setting:
+            trigger_setting = SystemSetting(key='scheduler_trigger_requested', value='true')
+            db.add(trigger_setting)
+        else:
+            trigger_setting.value = 'true'
+        db.commit()
+        
+        print("[API] Trigger flag set in database. Scheduler service will process on next check.")
+        return jsonify({'success': True, 'message': 'Trigger request sent to scheduler service'})
+    except Exception as e:
+        print(f"[API] Trigger error: {e}")
+        return abort(500, str(e))
+    finally:
+        db.close()
 
 
 @app.route('/settings/concurrency', methods=['POST'])
@@ -1363,23 +1416,9 @@ def resume_queue_item(item_id):
         socketio.emit('queue_update', {'type': 'status', 'item_id': item_id, 'status': 'running'})
         return jsonify({'resumed': True, 'message': 'Item resumed successfully'})
     except Exception as e:
-        return abort(500, str(e))
+            return abort(500, str(e))
     finally:
         db.close()
-
-
-@app.route('/scheduler/trigger', methods=['POST'])
-@require_auth
-def trigger_scheduler():
-    """Manually trigger the scheduler to check for queued items immediately."""
-    try:
-        print("[SCHEDULER] Manual trigger requested")
-        # Call the scheduler function directly
-        _scheduled_pick_and_start()
-        return jsonify({'success': True, 'message': 'Scheduler triggered successfully'})
-    except Exception as e:
-        print(f"[SCHEDULER] Manual trigger error: {e}")
-        return abort(500, str(e))
 
 
 @app.route('/workers', methods=['GET'])
