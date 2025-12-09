@@ -775,8 +775,16 @@ async function refreshWorkers() {
     const dl = document.createElement('a');
     dl.className = 'btn btn-sm btn-outline-secondary';
     dl.innerHTML = '<i class="bi bi-download"></i> Download';
-    // Use session cookie auth (browser handles this automatically for links)
-    dl.href = `/workers/${w.id}/download`;
+
+    // Check for token in sessionStorage to support token-based auth
+    const token = sessionStorage.getItem('AUTO_VOTER_TOKEN');
+    if (token) {
+      dl.href = `/workers/${w.id}/download?token=${token}`;
+    } else {
+      // Fallback to cookie-based auth
+      dl.href = `/workers/${w.id}/download`;
+    }
+
     dl.target = '_blank';
 
     btns.appendChild(view);
