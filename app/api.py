@@ -1463,17 +1463,18 @@ def worker_download_log(worker_id):
         else:
              return abort(404, f'Log file not found at {w.log_path}')
     
-    # If we are here, w.log_path exists
-    directory = os.path.dirname(w.log_path)
+    # send_from_directory generally requires absolute paths to avoid confusion/errors
+    directory = os.path.abspath(os.path.dirname(w.log_path))
     filename = os.path.basename(w.log_path)
     
-    sys.stderr.write(f"[DOWNLOAD] Serving from dir: {directory}, file: {filename}\n")
-    
-    from flask import send_from_directory
+    # Use send_file with the full absolute path
+    # send_from_directory serves 404 if it thinks path is unsafe or not found
+    from flask import send_file
     try:
-        return send_from_directory(directory, filename, as_attachment=True, download_name=f"worker_{worker_id}_log.txt")
+        sys.stderr.write(f"[DOWNLOAD] Serving directly with send_file: {w.log_path}\n")
+        return send_file(w.log_path, as_attachment=True, download_name=f"worker_{worker_id}_log.txt")
     except Exception as e:
-        sys.stderr.write(f"[DOWNLOAD] send_from_directory failed: {e}\n")
+        sys.stderr.write(f"[DOWNLOAD] send_file failed: {e}\n")
         return abort(404, f"Could not serve file: {e}")
 
 
