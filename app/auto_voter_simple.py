@@ -325,6 +325,11 @@ def auto_voter(thread_id, RunCount):
             resp.raise_for_status()
 
             PD_REQ_AUTH = resp.cookies.get("PD_REQ_AUTH")
+            # Try to get PDjs_poll cookie from server, fallback to client-side timestamp generation if missing
+            pd_poll_val = resp.cookies.get(f"PDjs_poll_{pollid}")
+            if not pd_poll_val:
+                pd_poll_val = int(time.time())
+
             soup = BeautifulSoup(resp.text, 'html.parser')
 
             pz = next((i['value'] for i in soup.find_all('input', type='hidden') if i.get('name') == 'pz'), None)
@@ -349,7 +354,7 @@ def auto_voter(thread_id, RunCount):
                 headers = {
                     "User-Agent": random.choice(useragents),
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                    "Cookie": f"PD_REQ_AUTH={PD_REQ_AUTH}; PDjs_poll_{pollid}={int(time.time())}",
+                    "Cookie": f"PD_REQ_AUTH={PD_REQ_AUTH}; PDjs_poll_{pollid}={pd_poll_val}",
                     "Referer": f"https://poll.fm/{pollid}",
                     "Priority": "u=0,i",
                     "accept-language": "en-US,en;q=0.9",
