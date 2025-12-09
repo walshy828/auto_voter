@@ -1445,9 +1445,10 @@ def worker_download_log(worker_id):
         sys.stderr.write(f"[DOWNLOAD] Worker {worker_id} has no log_path\n")
         return abort(404, 'Log path not set')
     
-    # Check absolute
+    # Check absolute or relative to CWD
     if os.path.exists(w.log_path):
-        sys.stderr.write(f"[DOWNLOAD] Found file at absolute path: {w.log_path}\n")
+        w.log_path = os.path.abspath(w.log_path)
+        sys.stderr.write(f"[DOWNLOAD] Found file at path: {w.log_path}\n")
     else:
         sys.stderr.write(f"[DOWNLOAD] Not found at: {w.log_path}. CWD: {os.getcwd()}\n")
         # Try relative to CWD if it looks relative
