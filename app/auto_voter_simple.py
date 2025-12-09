@@ -180,6 +180,22 @@ def start_job(job_config):
         
         PreviousGood = count_good
 
+        # Check if job was canceled via web UI after this batch
+        if current_item_id:
+            try:
+                db = SessionLocal()
+                item = db.query(QueueItem).filter(QueueItem.id == current_item_id).first()
+                if item and item.status == QueueStatus.canceled:
+                    print(f"[AutoVoter] Job {current_item_id} was canceled. Stopping after batch {i+1}.")
+                    if JOB_DEBUG_ENABLED:
+                        log_detailed(f"Batch {i+1}: Job canceled via web UI. Exiting.")
+                    stop_event.set()
+                    db.close()
+                    break
+                db.close()
+            except Exception as e:
+                print(f"[AutoVoter] Error checking cancellation status: {e}")
+
         # Adaptive Pause Logic
         is_adaptive = False
         pause_duration = p2_pause

@@ -8,7 +8,7 @@ import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from app.db import SessionLocal, init_db
 from app.models import QueueItem, QueueStatus, PollSchedulerConfig
-from app.worker import start_queue_item_background
+# Note: start_queue_item_background import deferred to pick_and_start() to speed up startup
 
 # Initialize database tables if they don't exist
 print("[Scheduler Service] Initializing database...")
@@ -141,6 +141,8 @@ def pick_and_start():
                             return
 
                     try:
+                        # Deferred import to speed up scheduler startup
+                        from app.worker import start_queue_item_background
                         start_queue_item_background(it.id)
                         print(f"[Scheduler Service] Successfully started item {it.id}")
                     except Exception as e:
@@ -472,8 +474,11 @@ def main():
     global current_queue_interval
     print("[Scheduler Service] Starting main()...")
     
-    # Reset zombie jobs on startup
-    reset_zombie_jobs()
+    # Reset zombie jobs in background to avoid blocking startup
+    import threading
+    zombie_thread = threading.Thread(target=reset_zombie_jobs, daemon=True)
+    zombie_thread.start()
+    print("[Scheduler Service] Zombie job cleanup started in background")
     
     try:
         current_queue_interval = int(os.environ.get('AUTO_VOTER_SCHEDULE_INTERVAL', '30'))
