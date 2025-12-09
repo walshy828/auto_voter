@@ -314,6 +314,9 @@ def auto_voter(thread_id, RunCount):
             # Use threading Lock for stop check if needed? No, Event is thread safe.
             if stop_event.is_set(): return
 
+            # Clear PD_REQ_AUTH to ensure we get a fresh one for each vote attempt
+            session.cookies.set("PD_REQ_AUTH", None) 
+
             resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
             resp.raise_for_status()
 
@@ -359,6 +362,9 @@ def auto_voter(thread_id, RunCount):
                 
                 if stop_event.is_set(): return
                 
+                # Random jitter to prevent exact simultaneous submissions
+                if stop_event.wait(random.uniform(0.8, 1.8)): return
+                
                 vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers)
                 
                 # --- DETAILED DEBUG OF RESPONSE ---
@@ -370,7 +376,7 @@ def auto_voter(thread_id, RunCount):
                 soup_vote = BeautifulSoup(vote_resp.text, 'html.parser')
 
                 VOTE_GOOD = 0
-                if vote_resp.url.endswith("g=voted"):
+                if vote_resp.url.endswith("g=voted") and "revoted" not in vote_resp.url:
                     VOTE_GOOD = 1
                     NoVoteRun = 0
                     vpn_votecnt += 1
