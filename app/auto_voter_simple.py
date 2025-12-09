@@ -291,6 +291,9 @@ def auto_voter(thread_id, RunCount):
 
         try:
             session = requests.Session()
+            # Ensure completely fresh cookie jar for this request
+            session.cookies.clear()
+            
             if use_tor:
                 try:
                     if JOB_DEBUG_ENABLED:
@@ -313,9 +316,6 @@ def auto_voter(thread_id, RunCount):
             
             # Use threading Lock for stop check if needed? No, Event is thread safe.
             if stop_event.is_set(): return
-
-            # Clear PD_REQ_AUTH to ensure we get a fresh one for each vote attempt
-            session.cookies.set("PD_REQ_AUTH", None) 
 
             resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
             resp.raise_for_status()
