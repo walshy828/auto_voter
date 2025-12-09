@@ -1428,38 +1428,52 @@ def worker_stream(worker_id):
 @app.route('/workers/<int:worker_id>/download', methods=['GET'])
 @require_auth
 def worker_download_log(worker_id):
+    import sys
+    sys.stderr.write(f"[DOWNLOAD] HIT endpoint for worker {worker_id}\n")
+    
     db = SessionLocal()
     w = db.query(WorkerProcess).filter(WorkerProcess.id == worker_id).first()
     db.close()
     
     if not w:
-        print(f"[DOWNLOAD] Worker {worker_id} not found in DB")
+        sys.stderr.write(f"[DOWNLOAD] Worker {worker_id} not found in DB\n")
         return abort(404, 'Worker not found')
         
-    print(f"[DOWNLOAD] Worker {worker_id} log_path: {w.log_path}")
+    sys.stderr.write(f"[DOWNLOAD] Worker {worker_id} log_path: {w.log_path}\n")
     
     if not w.log_path:
-        print(f"[DOWNLOAD] Worker {worker_id} has no log_path")
+        sys.stderr.write(f"[DOWNLOAD] Worker {worker_id} has no log_path\n")
         return abort(404, 'Log path not set')
-        
-    if not os.path.exists(w.log_path):
-        print(f"[DOWNLOAD] Log file does not exist at: {w.log_path}")
-        # Try to fallback to searching in relative logs dir if absolute failed
-        rel_path = os.path.join(os.getcwd(), w.log_path)
-        if os.path.exists(rel_path):
-             print(f"[DOWNLOAD] Found at relative path: {rel_path}")
-             w.log_path = rel_path
+    
+    # Check absolute
+    if os.path.exists(w.log_path):
+        sys.stderr.write(f"[DOWNLOAD] Found file at absolute path: {w.log_path}\n")
+    else:
+        sys.stderr.write(f"[DOWNLOAD] Not found at: {w.log_path}. CWD: {os.getcwd()}\n")
+        # Try relative to CWD if it looks relative
+        if not w.log_path.startswith('/'):
+             rel_path = os.path.abspath(os.path.join(os.getcwd(), w.log_path))
+             sys.stderr.write(f"[DOWNLOAD] Trying relative path: {rel_path}\n")
+             if os.path.exists(rel_path):
+                 sys.stderr.write(f"[DOWNLOAD] Found at relative path: {rel_path}\n")
+                 w.log_path = rel_path
+             else:
+                 sys.stderr.write(f"[DOWNLOAD] STILL NOT FOUND.\n")
+                 return abort(404, f'Log file not found at {w.log_path}')
         else:
              return abort(404, f'Log file not found at {w.log_path}')
     
+    # If we are here, w.log_path exists
     directory = os.path.dirname(w.log_path)
     filename = os.path.basename(w.log_path)
+    
+    sys.stderr.write(f"[DOWNLOAD] Serving from dir: {directory}, file: {filename}\n")
     
     from flask import send_from_directory
     try:
         return send_from_directory(directory, filename, as_attachment=True, download_name=f"worker_{worker_id}_log.txt")
     except Exception as e:
-        print(f"[DOWNLOAD] send_from_directory failed: {e}")
+        sys.stderr.write(f"[DOWNLOAD] send_from_directory failed: {e}\n")
         return abort(404, f"Could not serve file: {e}")
 
 
