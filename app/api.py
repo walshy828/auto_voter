@@ -636,20 +636,25 @@ def get_concurrency_setting():
 def get_scheduler_run_info():
     """Get scheduler next run time and last run time (if available)."""
     try:
+        if not scheduler.running:
+             return jsonify({
+                'next_run_time': None,
+                'status': 'stopped'
+            })
+
         job = scheduler.get_job('poll_queue_runner')
         if not job:
-            return jsonify({'error': 'Job not found'})
+            return jsonify({
+                'next_run_time': None,
+                'status': 'job_not_found'
+            })
             
         return jsonify({
             'next_run_time': to_est_string(job.next_run_time),
-            # APScheduler 3.x doesn't easily expose 'last_run_time' publicly on the job object 
-            # without listener tracking, but we can infer or just show next_run.
-            # However, for user convenience, showing next_run is the most critical.
-            # If we want last_run, we'd need to track it manually or use events.
-            # For now, let's return next_run.
-            'status': 'running' if scheduler.running else 'stopped'
+            'status': 'running'
         })
     except Exception as e:
+        print(f"[API ERROR] get_scheduler_run_info: {e}")
         return abort(500, str(e))
 
 

@@ -894,6 +894,10 @@ async function authedFetch(url, opts = {}) {
     showLoginModal();
     throw new Error('Unauthorized: please log in');
   }
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`HTTP ${res.status}: ${txt}`);
+  }
   return res;
 }
 
@@ -1637,7 +1641,10 @@ async function loadSchedulerRunInfo() {
 
   } catch (e) {
     console.error('Failed to load scheduler info:', e);
-    document.getElementById('schedulerRunStatus').textContent = 'Error';
+    const statusEl = document.getElementById('schedulerRunStatus');
+    statusEl.textContent = 'Error';
+    statusEl.className = 'badge bg-danger';
+    document.getElementById('schedulerNextRun').textContent = e.message;
   }
 }
 
