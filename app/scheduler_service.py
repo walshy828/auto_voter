@@ -71,97 +71,138 @@ def pick_and_start():
     lock_path = os.path.join(os.path.dirname(db_path), 'scheduler.lock')
     os.makedirs(os.path.dirname(lock_path), exist_ok=True)
 
-    with open(lock_path, 'w') as lock_file:
+    lock_file = None
+    lock_acquired = False
+    
+    try:
+        lock_file = open(lock_path, 'w')
+        
+        # Try to acquire lock with timeout (non-blocking)
         try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_acquired = True
+        except IOError:
+            print("[Scheduler Service] Could not acquire lock (another instance running). Skipping this cycle.")
+            return
+        
+        print("[Scheduler Service] pick_and_start() called (Locked)")
+        db = SessionLocal()
+        try:
+            from app.models import SystemSetting
             
-            print("[Scheduler Service] pick_and_start() called (Locked)")
-            db = SessionLocal()
-            try:
-                from app.models import SystemSetting
-                
-                # Update last run timestamp
-                now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-                last_run_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_last_run').first()
-                if not last_run_setting:
-                    last_run_setting = SystemSetting(key='scheduler_last_run', value=now.isoformat())
-                    db.add(last_run_setting)
-                else:
-                    last_run_setting.value = now.isoformat()
+            # Update last run timestamp
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            last_run_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_last_run').first()
+            if not last_run_setting:
+                last_run_setting = SystemSetting(key='scheduler_last_run', value=now.isoformat())
+                db.add(last_run_setting)
+            else:
+                last_run_setting.value = now.isoformat()
+            db.commit()
+            
+            # Clear manual trigger flag if it was set
+            trigger_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_trigger_requested').first()
+            if trigger_setting and trigger_setting.value == 'true':
+                print("[Scheduler Service] Manual trigger detected, processing...")
+                trigger_setting.value = 'false'
                 db.commit()
-                
-                # Clear manual trigger flag if it was set
-                trigger_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_trigger_requested').first()
-                if trigger_setting and trigger_setting.value == 'true':
-                    print("[Scheduler Service] Manual trigger detected, processing...")
-                    trigger_setting.value = 'false'
-                    db.commit()
-                
-                # Check if workers are paused
-                paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
-                if paused_setting and paused_setting.value == 'true':
-                    print("[Scheduler Service] Workers are paused, skipping queue processing")
-                    return
-                
-                # 1. Check for scheduled jobs whose time has arrived
-                scheduled_items = db.query(QueueItem).filter(
-                    QueueItem.status == QueueStatus.scheduled,
-                    QueueItem.scheduled_at <= now
-                ).all()
-                
-                for item in scheduled_items:
-                    print(f"[Scheduler Service] Transitioning scheduled item {item.id} to queued")
-                    item.status = QueueStatus.queued
-                    db.commit()
+            
+            # Check if workers are paused
+            paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
+            if paused_setting and paused_setting.value == 'true':
+                print("[Scheduler Service] Workers are paused, skipping queue processing")
+                return
+            
+            # 1. Check for scheduled jobs whose time has arrived
+            scheduled_items = db.query(QueueItem).filter(
+                QueueItem.status == QueueStatus.scheduled,
+                QueueItem.scheduled_at <= now
+            ).all()
+            
+            for item in scheduled_items:
+                print(f"[Scheduler Service] Transitioning scheduled item {item.id} to queued")
+                item.status = QueueStatus.queued
+                db.commit()
 
-                # 2. Check max concurrent workers
-                max_workers_setting = db.query(SystemSetting).filter(SystemSetting.key == 'max_concurrent_workers').first()
-                try:
-                    max_workers = int(max_workers_setting.value) if max_workers_setting and max_workers_setting.value else 1
-                except:
-                    max_workers = 1
-                
-                running_count = db.query(QueueItem).filter(QueueItem.status == QueueStatus.running).count()
-                
-                if running_count >= max_workers:
-                    print(f"[Scheduler Service] Max concurrent workers reached ({running_count}/{max_workers}). Waiting...")
-                    return
+            # 2. Check max concurrent workers
+            max_workers_setting = db.query(SystemSetting).filter(SystemSetting.key == 'max_concurrent_workers').first()
+            try:
+                max_workers = int(max_workers_setting.value) if max_workers_setting and max_workers_setting.value else 1
+            except:
+                max_workers = 1
+            
+            running_count = db.query(QueueItem).filter(QueueItem.status == QueueStatus.running).count()
+            
+            if running_count >= max_workers:
+                print(f"[Scheduler Service] Max concurrent workers reached ({running_count}/{max_workers}). Waiting...")
+                return
 
-                # 3. Pick and start
-                print("[Scheduler Service] Checking for queued items...")
-                it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
-                if it:
-                    print(f"[Scheduler Service] Found queued item {it.id}, attempting to start...")
-                    
-                    # Check VPN if required
-                    if it.use_vpn:
-                        print(f"[Scheduler Service] Item {it.id} requires VPN. Checking connection...")
-                        if not ensure_vpn_connected():
+            # 3. Pick and start
+            print("[Scheduler Service] Checking for queued items...")
+            it = db.query(QueueItem).filter(QueueItem.status == QueueStatus.queued).order_by(QueueItem.created_at.asc()).first()
+            if it:
+                print(f"[Scheduler Service] Found queued item {it.id}, attempting to start...")
+                
+                # Check VPN if required (with timeout protection)
+                if it.use_vpn:
+                    print(f"[Scheduler Service] Item {it.id} requires VPN. Checking connection...")
+                    try:
+                        # Run VPN check with timeout using threading
+                        import threading
+                        vpn_result = [False]
+                        def vpn_check():
+                            vpn_result[0] = ensure_vpn_connected()
+                        
+                        vpn_thread = threading.Thread(target=vpn_check, daemon=True)
+                        vpn_thread.start()
+                        vpn_thread.join(timeout=90)  # 90 second timeout for VPN
+                        
+                        if vpn_thread.is_alive():
+                            print(f"[Scheduler Service] VPN check timed out after 90s. Skipping item {it.id}...")
+                            return
+                        
+                        if not vpn_result[0]:
                             print(f"[Scheduler Service] Could not establish VPN connection. Skipping start of item {it.id}...")
                             return
+                    except Exception as vpn_e:
+                        print(f"[Scheduler Service] VPN check error: {vpn_e}")
+                        return
 
-                    try:
-                        # Deferred import to speed up scheduler startup
-                        from app.worker import start_queue_item_background
-                        start_queue_item_background(it.id)
-                        print(f"[Scheduler Service] Successfully started item {it.id}")
-                    except Exception as e:
-                        print(f"[Scheduler Service] Failed to start queued item {it.id}: {e}")
-                        import traceback
-                        traceback.print_exc()
-                else:
-                    print("[Scheduler Service] No queued items found")
-            finally:
-                db.close()
-            
-            # Update next run time after this execution completes
-            update_next_run_time()
-            
-            fcntl.flock(lock_file, fcntl.LOCK_UN)
-        except Exception as e:
-            print(f"[Scheduler Service] Error in pick_and_start: {e}")
-            import traceback
-            traceback.print_exc()
+                try:
+                    # Deferred import to speed up scheduler startup
+                    from app.worker import start_queue_item_background
+                    start_queue_item_background(it.id)
+                    print(f"[Scheduler Service] Successfully started item {it.id}")
+                except Exception as e:
+                    print(f"[Scheduler Service] Failed to start queued item {it.id}: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print("[Scheduler Service] No queued items found")
+        finally:
+            db.close()
+        
+        # Update next run time after this execution completes
+        update_next_run_time()
+        
+    except Exception as e:
+        print(f"[Scheduler Service] Error in pick_and_start: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # ALWAYS release lock if we acquired it
+        if lock_acquired and lock_file:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+                print("[Scheduler Service] Lock released")
+            except Exception as unlock_e:
+                print(f"[Scheduler Service] Error releasing lock: {unlock_e}")
+        
+        if lock_file:
+            try:
+                lock_file.close()
+            except:
+                pass
 
 
 def run_poll_results_scheduler():
