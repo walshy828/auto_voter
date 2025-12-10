@@ -35,6 +35,11 @@ def set_sqlite_pragma(dbapi_conn, connection_record):
     cursor.execute("PRAGMA cache_size=-64000")
     # Set temp store to memory
     cursor.execute("PRAGMA temp_store=MEMORY")
+    # Increase WAL autocheckpoint (default is 1000 pages (~4MB), increase to 10000 (~40MB))
+    # This reduces the frequency of writing WAL to main DB file
+    cursor.execute("PRAGMA wal_autocheckpoint=10000")
+    # Use mmap for faster read access and less I/O
+    cursor.execute("PRAGMA mmap_size=268435456")  # 256MB
     cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
