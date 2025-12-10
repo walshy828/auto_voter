@@ -18,10 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ExpressVPN (works reliably on Debian)
-RUN wget -q https://www.expressvpn.works/clients/linux/expressvpn_3.70.0.2-1_amd64.deb -O expressvpn.deb && \
-    dpkg -i expressvpn.deb && \
-    rm expressvpn.deb
+# Add ExpressVPN repository and install latest ExpressVPN
+RUN curl -fsSL https://www.expressvpn.com/clients/linux/expressvpn_repo_key.pub | gpg --dearmor -o /usr/share/keyrings/expressvpn-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/expressvpn-archive-keyring.gpg] https://www.expressvpn.com/clients/linux/ stable main" \
+    > /etc/apt/sources.list.d/expressvpn.list && \
+    apt-get update && \
+    apt-get install -y expressvpn && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python packages
 COPY requirements.txt /app/requirements.txt
