@@ -397,6 +397,7 @@ def auto_voter(thread_id, RunCount):
             # Random jitter before initial GET to spread out cookie requests and appear more human
             if stop_event.wait(random.uniform(0.8, 1.8)): return
 
+            # Increased timeout to 20s as requested
             resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
             resp.raise_for_status()
 
@@ -468,7 +469,8 @@ def auto_voter(thread_id, RunCount):
                 # Random jitter to prevent exact simultaneous submissions
                 if stop_event.wait(random.uniform(0.8, 1.8)): return
                 
-                vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers)
+                # Added timeout=20 as requested to prevent hanging
+                vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers, timeout=10)
                 
                 # --- DETAILED DEBUG OF RESPONSE ---
                 if JOB_DEBUG_ENABLED:
