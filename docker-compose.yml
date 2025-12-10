@@ -81,6 +81,10 @@ services:
       - MALLOC_TRIM_THRESHOLD_=100000
     volumes:
       - /docker/auto_voter/data:/app/data
+    tmpfs:
+      - /var/lib/expressvpn
+      - /var/lib/expressvpn/data
+      - /var/log
     restart: unless-stopped
     # Resource limits
     deploy:
