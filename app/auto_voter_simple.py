@@ -280,6 +280,16 @@ def new_location():
     try:
         # Use subprocess to connect via ExpressVPN CLI
         import subprocess
+        
+        # Disconnect first if already connected
+        try:
+            subprocess.run(['expressvpn', 'disconnect'], 
+                          capture_output=True, text=True, timeout=10)
+            time.sleep(1)  # Brief pause after disconnect
+        except:
+            pass  # Ignore disconnect errors
+        
+        # Connect to new location
         result = subprocess.run(['expressvpn', 'connect', alias], 
                               capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
