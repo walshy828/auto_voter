@@ -63,25 +63,33 @@ def ensure_vpn_connected():
             try:
                 print(f"[VPN Check] Connection attempt {attempt+1}/3...")
                 result = subprocess.run(['expressvpn', 'connect'], 
-                                      capture_output=True, text=True, timeout=20)
+                                      capture_output=True, text=True, timeout=30)
                 
-                # Verify connection
-                time.sleep(2)
-                verify = subprocess.run(['expressvpn', 'status'], 
-                                      capture_output=True, text=True, timeout=3)
-                if 'Connected' in verify.stdout:
-                    print("[VPN Check] Successfully connected.")
+                # Check for "already connected" message in stderr/stdout
+                if "Please disconnect first" in result.stderr or "Please disconnect first" in result.stdout:
+                    print("[VPN Check] VPN was already connected (detected via error message).")
                     return True
-                else:
-                    print(f"[VPN Check] Verification failed. Still not connected.")
-                    print(f"[VPN Check] Command output: {result.stdout}")
-                    print(f"[VPN Check] Command error: {result.stderr}")
-                    
-                    # Try explicit smart connect on last attempt
-                    if attempt == 2:
-                        print("[VPN Check] Trying 'smart' location as fallback...")
-                        subprocess.run(['expressvpn', 'connect', 'smart'], 
-                                     capture_output=True, timeout=30)
+                
+                # Verify connection with retries
+                # Sometimes status takes a moment to update after connect returns
+                for status_try in range(3):
+                    time.sleep(2)
+                    verify = subprocess.run(['expressvpn', 'status'], 
+                                          capture_output=True, text=True, timeout=3)
+                    if 'Connected' in verify.stdout:
+                        print(f"[VPN Check] Successfully connected (status check {status_try+1}).")
+                        return True
+                
+                # If we get here, verification failed despite connect returning
+                print(f"[VPN Check] Verification failed after connection attempt.")
+                print(f"[VPN Check] Command output: {result.stdout}")
+                print(f"[VPN Check] Command error: {result.stderr}")
+                
+                # Try explicit smart connect on last attempt
+                if attempt == 2:
+                    print("[VPN Check] Trying 'smart' location as fallback...")
+                    subprocess.run(['expressvpn', 'connect', 'smart'], 
+                                 capture_output=True, timeout=30)
             except subprocess.TimeoutExpired as e:
                 print(f"[VPN Check] Attempt {attempt+1} failed with error: {e}")
                 # Kill the timed-out process
