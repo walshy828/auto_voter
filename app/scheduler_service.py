@@ -21,8 +21,9 @@ _pick_and_start_running = False
 
 
 def ensure_vpn_connected():
-    """Ensure VPN is connected. Returns True if connected or successfully connected."""
+    """Ensure VPN is connected. If not, attempt to connect up to 3 times."""
     import subprocess
+    
     try:
         # Check if expressvpn command exists
         try:
@@ -30,39 +31,62 @@ def ensure_vpn_connected():
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
             print("[VPN Check] ExpressVPN command not found. Cannot ensure VPN.")
             return False
-
-        # Check status
-        result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=5)
+        
+        # Check if already connected
+        result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=3)
         if 'Connected' in result.stdout:
             return True
         
+        # Kill any hung expressvpn processes before attempting to connect
+        print("[VPN Check] Cleaning up any hung ExpressVPN processes...")
+        try:
+            # Find and kill any stuck 'expressvpn connect' processes
+            ps_result = subprocess.run(['pgrep', '-f', 'expressvpn connect'], 
+                                      capture_output=True, text=True, timeout=2)
+            if ps_result.stdout.strip():
+                pids = ps_result.stdout.strip().split('\n')
+                for pid in pids:
+                    if pid:
+                        try:
+                            print(f"[VPN Check] Killing hung process {pid}")
+                            subprocess.run(['kill', '-9', pid], timeout=2)
+                        except:
+                            pass
+                time.sleep(1)  # Give processes time to die
+        except Exception as e:
+            print(f"[VPN Check] Error cleaning up processes: {e}")
+        
         print("[VPN Check] VPN not connected. Attempting to connect...")
         
-        # Retry logic
+        # Try to connect up to 3 times
         for attempt in range(3):
             try:
                 print(f"[VPN Check] Connection attempt {attempt+1}/3...")
+                result = subprocess.run(['expressvpn', 'connect'], 
+                                      capture_output=True, text=True, timeout=20)
                 
-                # Try to connect (increase timeout)
-                subprocess.run(['expressvpn', 'connect'], capture_output=True, timeout=20)
-                
-                # Verify
-                result = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=5)
-                if 'Connected' in result.stdout:
+                # Verify connection
+                time.sleep(2)
+                verify = subprocess.run(['expressvpn', 'status'], 
+                                      capture_output=True, text=True, timeout=3)
+                if 'Connected' in verify.stdout:
                     print("[VPN Check] Successfully connected.")
                     return True
                 else:
                     print("[VPN Check] Verification failed. Still not connected.")
-                    # Optional: explicit disconnect before retry to clear bad state
-                    subprocess.run(['expressvpn', 'disconnect'], capture_output=True, timeout=10)
-                    time.sleep(2)
-            except Exception as e:
+            except subprocess.TimeoutExpired as e:
+                print(f"[VPN Check] Attempt {attempt+1} failed with error: {e}")
+                # Kill the timed-out process
+                try:
+                    subprocess.run(['pkill', '-9', '-f', 'expressvpn connect'], timeout=2)
+                except:
+                    pass
+            except Exception as e: # Catch other exceptions during connection attempt
                 print(f"[VPN Check] Attempt {attempt+1} failed with error: {e}")
                 time.sleep(2)
         
         print(f"[VPN Check] Failed to connect after 3 attempts.")
         return False
-            
     except Exception as e:
         print(f"[VPN Check] Error: {e}")
         return False
