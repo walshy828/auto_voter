@@ -167,7 +167,19 @@ def start_job(job_config):
                 print(f"[AutoVoterSimple] Batch {i+1}: Switching VPN location...")
                 if JOB_DEBUG_ENABLED:
                     log_detailed(f"Batch {i+1}: Switching VPN location...")
-                new_location()
+                
+                # Retry logic for VPN switching
+                vpn_success = False
+                for attempt in range(3):
+                    if new_location():
+                        vpn_success = True
+                        break
+                    print(f"[AutoVoterSimple] VPN switch failed (attempt {attempt+1}/3). Retrying...")
+                    time.sleep(2)
+                
+                if not vpn_success:
+                    print(f"[AutoVoterSimple] CRITICAL: Failed to switch VPN after 3 attempts. Skipping batch.")
+                    continue
         
         if JOB_DEBUG_ENABLED:
             log_detailed(f"Batch {i+1}: Starting {num_threads} threads for {p2_PerRun} runs each.")
@@ -302,18 +314,30 @@ def new_location():
         # Connect to new location
         result = subprocess.run(['expressvpn', 'connect', alias], 
                               capture_output=True, text=True, timeout=30)
-        if result.returncode == 0:
+        
+        # Verify connection
+        time.sleep(1)
+        status = subprocess.run(['expressvpn', 'status'], capture_output=True, text=True, timeout=5)
+        
+        if result.returncode == 0 and "Connected" in status.stdout:
             if JOB_DEBUG_ENABLED:
                 log_detailed(f"VPN connected successfully to {alias}")
+            vpn_votecnt = 0
+            vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+            return True
         else:
-            print(f"VPN Connection Warning: {result.stderr}")
+            print(f"VPN Connection Warning: Failed to connect to {alias}. Output: {result.stderr or result.stdout}")
+            vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+            return False
+            
     except subprocess.TimeoutExpired:
         print(f"VPN Connection Error: Timeout connecting to {alias}")
+        vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+        return False
     except Exception as e:
         print(f"VPN Connection Error: {e}")
-
-    vpn_votecnt = 0
-    vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+        vpnlocat = (vpnlocat + 1) % (vpnloccnt + 1)
+        return False
 
 
 def auto_voter(thread_id, RunCount):
@@ -397,8 +421,8 @@ def auto_voter(thread_id, RunCount):
             # Random jitter before initial GET to spread out cookie requests and appear more human
             if stop_event.wait(random.uniform(0.8, 1.8)): return
 
-            # Increased timeout to 20s as requested
-            resp = session.get(f"https://poll.fm/{pollid}", timeout=20)
+            # Reduced timeout to 10s as requested to prevent apparent hanging
+            resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
             resp.raise_for_status()
 
             PD_REQ_AUTH = resp.cookies.get("PD_REQ_AUTH")
@@ -469,8 +493,8 @@ def auto_voter(thread_id, RunCount):
                 # Random jitter to prevent exact simultaneous submissions
                 if stop_event.wait(random.uniform(0.8, 1.8)): return
                 
-                # Added timeout=20 as requested to prevent hanging
-                vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers, timeout=20)
+                # Reduced timeout to 10s as requested
+                vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers, timeout=10)
                 
                 # --- DETAILED DEBUG OF RESPONSE ---
                 if JOB_DEBUG_ENABLED:
