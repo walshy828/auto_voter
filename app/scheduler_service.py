@@ -582,9 +582,9 @@ def main():
         sched.add_job(check_auto_switch_to_lazy, 'interval', minutes=5, args=[sched], id='auto_switch_checker')
         print("[Scheduler Service] Auto-switch checker added")
         
-        # Add VPN idle checker (checks every 2 minutes to disconnect when idle)
-        sched.add_job(check_and_disconnect_idle_vpn, 'interval', minutes=2, id='vpn_idle_checker')
-        print("[Scheduler Service] VPN idle checker added (2 min interval)")
+        # Add VPN idle checker (checks every 15 minutes to disconnect when idle)
+        sched.add_job(check_and_disconnect_idle_vpn, 'interval', minutes=15, id='vpn_idle_checker')
+        print("[Scheduler Service] VPN idle checker added (15 min interval)")
         
         # Add data purge job (runs daily at 3 AM)
         sched.add_job(purge_old_data, 'cron', hour=3, minute=0, id='data_purge')
