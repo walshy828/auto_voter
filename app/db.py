@@ -5,7 +5,38 @@ import os
 # Database file path (mounted volume or local file)
 DB_PATH = os.environ.get('AUTO_VOTER_DB', 'sqlite:///./data/auto_voter.db')
 
-engine = create_engine(DB_PATH, connect_args={"check_same_thread": False})
+# Optimize SQLite for reduced disk I/O
+# - WAL mode: Write-Ahead Logging for better concurrency and fewer disk syncs
+# - synchronous=NORMAL: Reduce fsync calls while maintaining crash safety
+# - cache_size: Larger cache to reduce disk reads
+# - pool_pre_ping: Check connections before use to avoid stale connections
+engine = create_engine(
+    DB_PATH, 
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 30  # Increase timeout for busy database
+    },
+    pool_pre_ping=True,
+    pool_recycle=3600,  # Recycle connections after 1 hour
+    echo=False  # Disable SQL logging to reduce overhead
+)
+
+# Enable SQLite optimizations on connect
+from sqlalchemy import event
+
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    # Enable WAL mode for better concurrency
+    cursor.execute("PRAGMA journal_mode=WAL")
+    # Reduce sync frequency (NORMAL is safe for most cases)
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    # Increase cache size (negative = KB, so -64000 = 64MB)
+    cursor.execute("PRAGMA cache_size=-64000")
+    # Set temp store to memory
+    cursor.execute("PRAGMA temp_store=MEMORY")
+    cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

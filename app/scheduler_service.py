@@ -15,6 +15,10 @@ print("[Scheduler Service] Initializing database...")
 init_db()
 print("[Scheduler Service] Database initialized")
 
+# Global lock to prevent concurrent pick_and_start executions
+_pick_and_start_running = False
+
+
 
 def ensure_vpn_connected():
     """Ensure VPN is connected. Returns True if connected or successfully connected."""
@@ -66,41 +70,45 @@ def ensure_vpn_connected():
 
 def pick_and_start():
     """Pick and start queued voting items with locking and max worker check."""
-    print(f"[Scheduler Service] pick_and_start() ENTRY at {datetime.datetime.now()}")
+    # Use a simple in-process lock to prevent concurrent executions
+    # This is more efficient than file locking for same-process calls
+    global _pick_and_start_running
     
-    # Use a file lock to prevent race conditions
-    db_path = os.environ.get('AUTO_VOTER_DB', './data/auto_voter.db').replace('sqlite:///', '')
-    lock_path = os.path.join(os.path.dirname(db_path), 'scheduler.lock')
-    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
-
-    lock_file = None
-    lock_acquired = False
+    if _pick_and_start_running:
+        print("[Scheduler Service] pick_and_start already running, skipping this cycle")
+        return
+    
+    _pick_and_start_running = True
     
     try:
-        lock_file = open(lock_path, 'w')
-        
-        # Try to acquire lock with timeout (non-blocking)
-        try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            lock_acquired = True
-        except IOError:
-            print("[Scheduler Service] Could not acquire lock (another instance running). Skipping this cycle.")
-            return
-        
-        print("[Scheduler Service] pick_and_start() called (Locked)")
+        print(f"[Scheduler Service] pick_and_start() called at {datetime.datetime.now()}")
         db = SessionLocal()
         try:
             from app.models import SystemSetting
             
-            # Update last run timestamp
+            # Update last run timestamp (less frequently to reduce writes)
             now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            
+            # Only update timestamp every 5 minutes to reduce DB writes
             last_run_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_last_run').first()
+            should_update_timestamp = False
+            
             if not last_run_setting:
                 last_run_setting = SystemSetting(key='scheduler_last_run', value=now.isoformat())
                 db.add(last_run_setting)
+                should_update_timestamp = True
             else:
+                # Only update if more than 5 minutes have passed
+                try:
+                    last_run = datetime.datetime.fromisoformat(last_run_setting.value)
+                    if (now - last_run).total_seconds() > 300:  # 5 minutes
+                        should_update_timestamp = True
+                except:
+                    should_update_timestamp = True
+            
+            if should_update_timestamp:
                 last_run_setting.value = now.isoformat()
-            db.commit()
+                db.commit()
             
             # Clear manual trigger flag if it was set
             trigger_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_trigger_requested').first()
@@ -184,27 +192,15 @@ def pick_and_start():
         finally:
             db.close()
         
-        # Update next run time after this execution completes
-        update_next_run_time()
+        # Removed update_next_run_time() to reduce unnecessary DB writes
         
     except Exception as e:
         print(f"[Scheduler Service] Error in pick_and_start: {e}")
         import traceback
         traceback.print_exc()
     finally:
-        # ALWAYS release lock if we acquired it
-        if lock_acquired and lock_file:
-            try:
-                fcntl.flock(lock_file, fcntl.LOCK_UN)
-                print("[Scheduler Service] Lock released")
-            except Exception as unlock_e:
-                print(f"[Scheduler Service] Error releasing lock: {unlock_e}")
-        
-        if lock_file:
-            try:
-                lock_file.close()
-            except:
-                pass
+        _pick_and_start_running = False
+
 
 
 def run_poll_results_scheduler():
@@ -545,21 +541,21 @@ def main():
         print(f"[Scheduler Service] Queue scheduler started, interval={current_queue_interval}s, max_instances=3, first_run={first_run}")
         
         # Add poll results scheduler (checks config for interval)
-        # Run every minute and let the function check if it should actually run
-        sched.add_job(run_poll_results_scheduler, 'interval', minutes=1, id='poll_results_runner')
-        print(f"[Scheduler Service] Poll results scheduler started, checks every 1 minute")
+        # Run every 5 minutes to reduce DB polling overhead
+        sched.add_job(run_poll_results_scheduler, 'interval', minutes=5, id='poll_results_runner')
+        print(f"[Scheduler Service] Poll results scheduler started, checks every 5 minutes")
         
-        # Add config manager (checks every 30s)
-        sched.add_job(manage_scheduler_config, 'interval', seconds=30, args=[sched], id='config_manager')
-        print("[Scheduler Service] Config manager added")
+        # Add config manager (checks every 5 minutes to reduce DB polling)
+        sched.add_job(manage_scheduler_config, 'interval', minutes=5, args=[sched], id='config_manager')
+        print("[Scheduler Service] Config manager added (5 min interval)")
         
         # Add auto-switch checker (checks every 5 minutes)
         sched.add_job(check_auto_switch_to_lazy, 'interval', minutes=5, args=[sched], id='auto_switch_checker')
         print("[Scheduler Service] Auto-switch checker added")
         
-        # Add VPN idle checker (checks every 5 minutes to disconnect when idle)
-        sched.add_job(check_and_disconnect_idle_vpn, 'interval', minutes=5, id='vpn_idle_checker')
-        print("[Scheduler Service] VPN idle checker added (5 min interval)")
+        # Add VPN idle checker (checks every 2 minutes to disconnect when idle)
+        sched.add_job(check_and_disconnect_idle_vpn, 'interval', minutes=2, id='vpn_idle_checker')
+        print("[Scheduler Service] VPN idle checker added (2 min interval)")
         
         # Add data purge job (runs daily at 3 AM)
         sched.add_job(purge_old_data, 'cron', hour=3, minute=0, id='data_purge')
