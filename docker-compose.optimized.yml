@@ -3,7 +3,7 @@ services:
   web:
     build:
       context: https://github.com/walshy828/auto_voter.git#main
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.optimized
     cap_add:
       - NET_ADMIN
     devices:
@@ -56,7 +56,7 @@ services:
   scheduler:
     build:
       context: https://github.com/walshy828/auto_voter.git#main
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.optimized
     command: python app/scheduler_service.py
     cap_add:
       - NET_ADMIN

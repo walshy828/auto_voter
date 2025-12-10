@@ -3,11 +3,11 @@ Run this in a separate process (supervisord/systemd or a separate container) to 
 """
 import os
 import time
-import fcntl
 import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from app.db import SessionLocal, init_db
 from app.models import QueueItem, QueueStatus, PollSchedulerConfig
+from app.utils.db_helpers import get_cached_bool_setting, get_cached_int_setting, invalidate_setting_cache
 # Note: start_queue_item_background import deferred to pick_and_start() to speed up startup
 
 # Initialize database tables if they don't exist
@@ -117,9 +117,8 @@ def pick_and_start():
                 trigger_setting.value = 'false'
                 db.commit()
             
-            # Check if workers are paused
-            paused_setting = db.query(SystemSetting).filter(SystemSetting.key == 'workers_paused').first()
-            if paused_setting and paused_setting.value == 'true':
+            # Check if workers are paused (using cached setting)
+            if get_cached_bool_setting('workers_paused', default=False):
                 print("[Scheduler Service] Workers are paused, skipping queue processing")
                 return
             
@@ -134,12 +133,8 @@ def pick_and_start():
                 item.status = QueueStatus.queued
                 db.commit()
 
-            # 2. Check max concurrent workers
-            max_workers_setting = db.query(SystemSetting).filter(SystemSetting.key == 'max_concurrent_workers').first()
-            try:
-                max_workers = int(max_workers_setting.value) if max_workers_setting and max_workers_setting.value else 1
-            except:
-                max_workers = 1
+            # 2. Check max concurrent workers (using cached setting)
+            max_workers = get_cached_int_setting('max_concurrent_workers', default=1)
             
             running_count = db.query(QueueItem).filter(QueueItem.status == QueueStatus.running).count()
             
@@ -280,21 +275,16 @@ def update_next_run_time():
 def manage_scheduler_config(scheduler):
     """Check DB for scheduler interval changes and update job if needed."""
     global current_queue_interval
-    from app.models import SystemSetting
     
-    db = SessionLocal()
     try:
-        setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_interval').first()
-        if setting and setting.value:
-            new_interval = int(setting.value)
-            if new_interval != current_queue_interval:
-                print(f"[Scheduler Manager] Interval changed from {current_queue_interval}s to {new_interval}s. Rescheduling.")
-                scheduler.reschedule_job('queue_runner', trigger='interval', seconds=new_interval)
-                current_queue_interval = new_interval
+        # Use cached setting with force refresh to check for changes
+        new_interval = get_cached_int_setting('scheduler_interval', default=current_queue_interval, use_cache=False)
+        if new_interval != current_queue_interval:
+            print(f"[Scheduler Manager] Interval changed from {current_queue_interval}s to {new_interval}s. Rescheduling.")
+            scheduler.reschedule_job('queue_runner', trigger='interval', seconds=new_interval)
+            current_queue_interval = new_interval
     except Exception as e:
         print(f"[Scheduler Manager] Error: {e}")
-    finally:
-        db.close()
 
 
 def check_auto_switch_to_lazy(scheduler):
@@ -303,9 +293,8 @@ def check_auto_switch_to_lazy(scheduler):
     
     db = SessionLocal()
     try:
-        # 1. Check if auto-switch is enabled
-        setting = db.query(SystemSetting).filter(SystemSetting.key == 'auto_switch_to_lazy').first()
-        if not setting or setting.value != 'true':
+        # 1. Check if auto-switch is enabled (using cached setting)
+        if not get_cached_bool_setting('auto_switch_to_lazy', default=False):
             return
 
         # 2. Check for active queue items
