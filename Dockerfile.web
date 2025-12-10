@@ -1,0 +1,66 @@
+# Optimized Dockerfile for Web Container (No VPN needed)
+# Uses Alpine for minimal size
+
+# ============================================
+# Stage 1: Builder - Compile dependencies
+# ============================================
+FROM python:3.11-alpine AS builder
+
+# Install build dependencies (will be discarded in final image)
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    linux-headers \
+    postgresql-dev \
+    libffi-dev \
+    openssl-dev
+
+# Create virtual environment for cleaner dependency management
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy and install Python dependencies
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
+
+# ============================================
+# Stage 2: Runtime - Minimal production image
+# ============================================
+FROM python:3.11-alpine
+
+WORKDIR /app
+
+# Install only runtime dependencies (no build tools, no VPN)
+RUN apk add --no-cache \
+    libpq \
+    curl \
+    bash \
+    ca-certificates
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy application code
+COPY . /app
+
+# Make scripts executable
+RUN chmod +x /app/entrypoint.sh /app/activate_expressvpn.exp
+
+# Set environment variables
+ENV PATH="/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PYTHONPATH=/app \
+    FLASK_APP=app.api:app \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONOPTIMIZE=2
+
+# Create non-root user for security
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser && \
+    chown -R appuser:appuser /app
+
+EXPOSE 8080
+
+# Simplified entrypoint for web (no VPN setup)
+CMD ["python", "-m", "app.api"]
