@@ -40,7 +40,8 @@ RUN apk add --no-cache \
     iproute2 \
     procps \
     bash \
-    ca-certificates
+    ca-certificates \
+    binutils
 
 # Install ExpressVPN
 # Note: This is the largest component (~50MB). Consider if VPN is needed in both containers.
