@@ -129,7 +129,7 @@ def pick_and_start():
             # Update last run timestamp (less frequently to reduce writes)
             now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
             
-            # Only update timestamp every 5 minutes to reduce DB writes
+            # Only update timestamp every 30 minutes to reduce DB writes
             last_run_setting = db.query(SystemSetting).filter(SystemSetting.key == 'scheduler_last_run').first()
             should_update_timestamp = False
             
@@ -138,10 +138,10 @@ def pick_and_start():
                 db.add(last_run_setting)
                 should_update_timestamp = True
             else:
-                # Only update if more than 5 minutes have passed
+                # Only update if more than 30 minutes have passed
                 try:
                     last_run = datetime.datetime.fromisoformat(last_run_setting.value)
-                    if (now - last_run).total_seconds() > 300:  # 5 minutes
+                    if (now - last_run).total_seconds() > 1800:  # 30 minutes
                         should_update_timestamp = True
                 except:
                     should_update_timestamp = True

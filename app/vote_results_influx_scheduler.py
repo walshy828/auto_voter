@@ -156,11 +156,21 @@ def extract_poll_results(url, pollid, force=False):
                 'percent': percent
             })
 
-            # InfluxDB logic (unchanged)
+        # Optimization: Check if this poll has actually changed since last update
+        # We check the first poll record for this ID (assuming all track same poll)
+        if poll_records:
+            # Check if total votes changed since last snapshot
+            if poll_records[0].total_poll_votes == total_poll_votes:
+                # print(f"[Poll Results] No new votes for poll {pollid} (Total: {total_poll_votes}). Skipping updates.")
+                db.close()
+                return
+
+        for answer in all_answers:
+             # InfluxDB logic (unchanged)
             try:
-                vote_name, vote_school = answer_text.split(", ", 1)
+                vote_name, vote_school = answer['answer_text'].split(", ", 1)
             except ValueError:
-                vote_name = answer_text
+                vote_name = answer['answer_text']
                 vote_school = "Unknown"
 
             vote_name = clean_influx_string(vote_name)
@@ -174,7 +184,7 @@ def extract_poll_results(url, pollid, force=False):
                 f"polltitle={poll_title_clean},"
                 f"name={vote_name},"
                 f"school={vote_school} "
-                f"votes={votes}i "
+                f"votes={answer['votes']}i "
                 f"{unix_time}"
             )
             influx_batch.append(influx_record)
