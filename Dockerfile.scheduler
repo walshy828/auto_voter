@@ -19,10 +19,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Add ExpressVPN repository and install latest ExpressVPN
-# 1. Download the Linux landing page
-# 2. Extract the full download URL for the amd64.deb file
-# 3. Download and install that specific file
-RUN export DOWNLOAD_URL=$(curl -s "https://www.expressvpn.com/vpn-software/vpn-linux" | grep -o 'https://www.expressvpn.works/clients/linux/expressvpn_[0-9.]*-1_amd64.deb' | head -n 1) && \
+# 1. Added User-Agent to curl to prevent 403 Forbidden errors.
+# 2. Relaxed the grep regex to capture any .deb file with 'amd64' in the name.
+# 3. Added 'set -e' logic implicitly (&&) so build stops if download fails.
+RUN export USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0" && \
+    export DOWNLOAD_URL=$(curl -s -L -A "$USER_AGENT" "https://www.expressvpn.com/vpn-software/vpn-linux" | grep -o 'https://[^"]*amd64.deb' | head -n 1) && \
+    if [ -z "$DOWNLOAD_URL" ]; then echo "Error: Could not find ExpressVPN download URL" && exit 1; fi && \
     echo "Downloading latest ExpressVPN from: $DOWNLOAD_URL" && \
     wget -q "$DOWNLOAD_URL" -O expressvpn.deb && \
     dpkg -i expressvpn.deb && \
