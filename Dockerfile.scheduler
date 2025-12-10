@@ -1,9 +1,11 @@
 # Optimized Dockerfile for Scheduler Container (Needs VPN)
+# Uses Debian-slim for ExpressVPN compatibility
+
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install runtime + build dependencies + required GPG tools
+# Install system dependencies (optimized, remove build-essential after pip install)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
@@ -11,35 +13,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     procps \
     ca-certificates \
-    gnupg2 \
-    dirmngr \
-    lsb-release \
+    # Build dependencies (will be removed)
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Add ExpressVPN repository key
-RUN curl -fsSL https://www.expressvpn.com/clients/linux/expressvpn_repo_key.pub \
-    | gpg --dearmor -o /usr/share/keyrings/expressvpn-archive-keyring.gpg
+# Add ExpressVPN repository and install latest ExpressVPN
+# 1. Download the Linux landing page
+# 2. Extract the full download URL for the amd64.deb file
+# 3. Download and install that specific file
+RUN export DOWNLOAD_URL=$(curl -s "https://www.expressvpn.com/vpn-software/vpn-linux" | grep -o 'https://www.expressvpn.works/clients/linux/expressvpn_[0-9.]*-1_amd64.deb' | head -n 1) && \
+    echo "Downloading latest ExpressVPN from: $DOWNLOAD_URL" && \
+    wget -q "$DOWNLOAD_URL" -O expressvpn.deb && \
+    dpkg -i expressvpn.deb && \
+    rm expressvpn.deb
 
-# Add ExpressVPN repository
-RUN echo "deb [signed-by=/usr/share/keyrings/expressvpn-archive-keyring.gpg] https://www.expressvpn.com/clients/linux/ stable main" \
-    > /etc/apt/sources.list.d/expressvpn.list
-
-# Install ExpressVPN
-RUN apt-get update && apt-get install -y expressvpn && rm -rf /var/lib/apt/lists/*
-
-# Install Python requirements
+# Copy requirements and install Python packages
 COPY requirements.txt /app/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r /app/requirements.txt && \
-    apt-get purge -y --auto-remove gcc libpq-dev
+    # Remove build dependencies to reduce image size
+    apt-get purge -y --auto-remove gcc libpq-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy app and scripts
 COPY . /app
 RUN chmod +x /app/entrypoint.sh /app/activate_expressvpn.exp
 
-# Environment variables
+# Set environment variables
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -49,4 +51,3 @@ EXPOSE 8080
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["python", "app/scheduler_service.py"]
-
