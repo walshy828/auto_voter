@@ -47,8 +47,8 @@ def run_all_polls(db_session=None):
     close_db = (db_session is None)  # Only close if we created it
     
     try:
-        polls = db.query(Poll).all()
-        print(f"[Poll Results] Running for {len(polls)} polls...")
+        polls = db.query(Poll).filter(Poll.status == 'active').all()
+        print(f"[Poll Results] Running for {len(polls)} active polls...")
         
         for poll in polls:
             url = f"https://poll.fm/{poll.pollid}/results"
