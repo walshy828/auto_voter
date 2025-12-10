@@ -1,11 +1,9 @@
 # Optimized Dockerfile for Scheduler Container (Needs VPN)
-# Uses Debian-slim for ExpressVPN compatibility
-
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies (optimized, remove build-essential after pip install)
+# Install runtime + build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
@@ -13,27 +11,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     procps \
     ca-certificates \
-    # Build dependencies (will be removed)
+    gnupg2 \
+    lsb-release \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Add ExpressVPN repository and install latest ExpressVPN
-RUN curl -fsSL https://www.expressvpn.com/clients/linux/expressvpn_repo_key.pub | gpg --dearmor -o /usr/share/keyrings/expressvpn-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/expressvpn-archive-keyring.gpg] https://www.expressvpn.com/clients/linux/ stable main" \
-    > /etc/apt/sources.list.d/expressvpn.list && \
-    apt-get update && \
-    apt-get install -y expressvpn && \
-    rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://www.expressvpn.com/clients/linux/expressvpn_repo_key.pub \
+    | gpg --dearmor -o /usr/share/keyrings/expressvpn-archive-keyring.gpg
 
-# Copy requirements and install Python packages
+RUN echo "deb [signed-by=/usr/share/keyrings/expressvpn-archive-keyring.gpg] https://www.expressvpn.com/clients/linux/ stable main" \
+    > /etc/apt/sources.list.d/expressvpn.list
+
+RUN apt-get update && apt-get install -y expressvpn && rm -rf /var/lib/apt/lists/*
+
+# Copy Python requirements and install
 COPY requirements.txt /app/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r /app/requirements.txt && \
     # Remove build dependencies to reduce image size
-    apt-get purge -y --auto-remove gcc libpq-dev && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get purge -y --auto-remove gcc libpq-dev
 
 # Copy app and scripts
 COPY . /app
