@@ -278,7 +278,17 @@ def new_location():
         log_detailed(f"VPN Switching to alias: {alias} (loc: {vpnloc[vpnlocat].get('loc')})")
 
     try:
-        connect_alias(alias)
+        # Use subprocess to connect via ExpressVPN CLI
+        import subprocess
+        result = subprocess.run(['expressvpn', 'connect', alias], 
+                              capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            if JOB_DEBUG_ENABLED:
+                log_detailed(f"VPN connected successfully to {alias}")
+        else:
+            print(f"VPN Connection Warning: {result.stderr}")
+    except subprocess.TimeoutExpired:
+        print(f"VPN Connection Error: Timeout connecting to {alias}")
     except Exception as e:
         print(f"VPN Connection Error: {e}")
 
