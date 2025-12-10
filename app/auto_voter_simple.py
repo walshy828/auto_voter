@@ -157,9 +157,17 @@ def start_job(job_config):
             # Check stop event before possibly long VPN switch
             if stop_event.is_set(): break
             
-            if JOB_DEBUG_ENABLED:
-                log_detailed(f"Batch {i+1}: Switching VPN location...")
-            new_location()
+            # Skip VPN switch on first batch if we are just starting, 
+            # as the scheduler already ensured we are connected.
+            if i == 0:
+                print(f"[AutoVoterSimple] Batch 1: Using existing VPN connection established by scheduler.")
+                if JOB_DEBUG_ENABLED:
+                    log_detailed("Skipping initial VPN switch on first batch.")
+            else:
+                print(f"[AutoVoterSimple] Batch {i+1}: Switching VPN location...")
+                if JOB_DEBUG_ENABLED:
+                    log_detailed(f"Batch {i+1}: Switching VPN location...")
+                new_location()
         
         if JOB_DEBUG_ENABLED:
             log_detailed(f"Batch {i+1}: Starting {num_threads} threads for {p2_PerRun} runs each.")
@@ -274,8 +282,10 @@ def new_location():
                 break
     
     alias = vpnloc[vpnlocat]["alias"]
+    msg = f"VPN Switching to alias: {alias} (loc: {vpnloc[vpnlocat].get('loc')})"
+    print(f"[AutoVoterSimple] {msg}")
     if JOB_DEBUG_ENABLED:
-        log_detailed(f"VPN Switching to alias: {alias} (loc: {vpnloc[vpnlocat].get('loc')})")
+        log_detailed(msg)
 
     try:
         # Use subprocess to connect via ExpressVPN CLI
