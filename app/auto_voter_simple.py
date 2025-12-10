@@ -15,7 +15,7 @@ from stem import Signal
 from stem.control import Controller
 from influxdb_client import InfluxDBClient
 from influxdb_client.client.write_api import SYNCHRONOUS
-from expressvpn import connect_alias
+# Note: expressvpn module not used - we use CLI commands via subprocess instead
 import app.config as config
 from app.db import SessionLocal
 from app.models import QueueItem, QueueStatus
