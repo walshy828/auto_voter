@@ -41,7 +41,9 @@ RUN apk add --no-cache \
     procps \
     bash \
     ca-certificates \
-    binutils
+    binutils \
+    tar \
+    gzip
 
 # Install ExpressVPN
 # Note: This is the largest component (~50MB). Consider if VPN is needed in both containers.
@@ -50,9 +52,20 @@ RUN wget -q https://www.expressvpn.works/clients/linux/expressvpn_3.70.0.2-1_amd
     cd /tmp && \
     ar x expressvpn.deb && \
     tar -xzf data.tar.gz -C / && \
-    rm -rf /tmp/expressvpn.deb /tmp/*.tar.* /tmp/debian-binary && \
+    # Create symlinks for Alpine compatibility
+    ln -sf /usr/bin/expressvpn /usr/local/bin/expressvpn 2>/dev/null || true && \
+    # Ensure expressvpnd is in the right location
+    if [ -f /usr/sbin/expressvpnd ]; then \
+    ln -sf /usr/sbin/expressvpnd /usr/local/sbin/expressvpnd; \
+    elif [ -f /usr/bin/expressvpnd ]; then \
+    ln -sf /usr/bin/expressvpnd /usr/local/sbin/expressvpnd; \
+    fi && \
     # Create necessary directories
-    mkdir -p /var/lib/expressvpn
+    mkdir -p /var/lib/expressvpn /var/log && \
+    # Cleanup
+    rm -rf /tmp/expressvpn.deb /tmp/*.tar.* /tmp/debian-binary && \
+    # Verify installation
+    which expressvpn || echo "Warning: expressvpn not found in PATH"
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
@@ -64,7 +77,7 @@ COPY . /app
 RUN chmod +x /app/entrypoint.sh /app/activate_expressvpn.exp
 
 # Set environment variables
-ENV PATH="/opt/venv/bin:$PATH" \
+ENV PATH="/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PYTHONPATH=/app \
     FLASK_APP=app.api:app \
     PYTHONUNBUFFERED=1 \
