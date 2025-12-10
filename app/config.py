@@ -44,7 +44,6 @@ vpnloc = [
 {"alias": "usmi", "loc": "us"},
 {"alias": "usmi2", "loc": "us"},
 {"alias": "usna", "loc": "us"},
-{"alias": "usnb", "loc": "us"},
 {"alias": "usnj1", "loc": "us"},
 {"alias": "usnj2", "loc": "us"},
 {"alias": "usnj3", "loc": "us"},

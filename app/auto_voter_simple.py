@@ -398,7 +398,7 @@ def auto_voter(thread_id, RunCount):
             if stop_event.wait(random.uniform(0.8, 1.8)): return
 
             # Increased timeout to 20s as requested
-            resp = session.get(f"https://poll.fm/{pollid}", timeout=10)
+            resp = session.get(f"https://poll.fm/{pollid}", timeout=20)
             resp.raise_for_status()
 
             PD_REQ_AUTH = resp.cookies.get("PD_REQ_AUTH")
@@ -470,7 +470,7 @@ def auto_voter(thread_id, RunCount):
                 if stop_event.wait(random.uniform(0.8, 1.8)): return
                 
                 # Added timeout=20 as requested to prevent hanging
-                vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers, timeout=10)
+                vote_resp = session.get(f"https://poll.fm/vote?", params=payload, headers=headers, timeout=20)
                 
                 # --- DETAILED DEBUG OF RESPONSE ---
                 if JOB_DEBUG_ENABLED:
