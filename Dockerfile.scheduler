@@ -18,17 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Add ExpressVPN repository and install latest ExpressVPN
-# 1. Added User-Agent to curl to prevent 403 Forbidden errors.
-# 2. Relaxed the grep regex to capture any .deb file with 'amd64' in the name.
-# 3. Added 'set -e' logic implicitly (&&) so build stops if download fails.
-RUN export USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0" && \
-    export DOWNLOAD_URL=$(curl -s -L -A "$USER_AGENT" "https://www.expressvpn.com/vpn-software/vpn-linux" | grep -o 'https://[^"]*amd64.deb' | head -n 1) && \
-    if [ -z "$DOWNLOAD_URL" ]; then echo "Error: Could not find ExpressVPN download URL" && exit 1; fi && \
-    echo "Downloading latest ExpressVPN from: $DOWNLOAD_URL" && \
-    wget -q "$DOWNLOAD_URL" -O expressvpn.deb && \
+# Install ExpressVPN
+# 1. Install base version (v3.70) to set up repo keys
+# 2. Upgrade to latest version (v4+) using the now-installed repo
+RUN wget -q https://www.expressvpn.works/clients/linux/expressvpn_3.70.0.2-1_amd64.deb -O expressvpn.deb && \
     dpkg -i expressvpn.deb && \
-    rm expressvpn.deb
+    rm expressvpn.deb && \
+    apt-get update && apt-get install -y expressvpn
 
 # Copy requirements and install Python packages
 COPY requirements.txt /app/requirements.txt
